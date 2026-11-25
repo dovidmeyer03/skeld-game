@@ -506,7 +506,8 @@ function playerSay(raw,spk){if(isClient()&&!spk){const t=String(raw).replace(/\s
  const named=A.filter(a=>a!==p&&new RegExp('\\b'+a.name.toLowerCase()+'\\b').test(low));const live=named.filter(a=>a.alive);
  const room=ROOMS.find(r=>low.includes(r.name.toLowerCase()))||ROOMS.find(r=>{const w=r.name.toLowerCase().split(' ')[0];return w.length>3&&!['upper','lower'].includes(w)&&new RegExp('\\b'+w+'\\b').test(low);});
  const acc=RX_ACC.test(low),vou=RX_VOUCH.test(low),ask=RX_ASK.test(low),self=RX_SELF.test(low);
- if(M.aiOn){M.lines.splice(M.shown,0,{who:p.id,text});chatClaims(text,p);
+ if(M.aiOn){M.lines.splice(M.shown,0,{who:p.id,text});M.shown+=1;M.scroll=0;chatClaims(text,p);M.chatEpoch=(M.chatEpoch||0)+1;
+  if(M.phase==='vote'){for(const a of A)if(a.alive&&!a.human&&M.votes[a.id]===undefined&&!(M.aiQueue||[]).includes(a.id))(M.aiQueue=M.aiQueue||[]).push(a.id);if(!M.aiChain)aiNext(M);}
   const _now=Date.now();if(!M.playerAiT||_now-M.playerAiT>4000){M.playerAiT=_now;const _resp=named.filter(a=>a.alive&&!a.human).slice(0,2).map(a=>a.id);if(!_resp.length){const _c=shuffle(A.filter(a=>a.alive&&!a.human));if(_c.length)_resp.push(_c[0].id);}M.aiQueue=(M.aiQueue||[]).filter(id=>!_resp.includes(id));M.aiQueue.unshift(..._resp);if(!M.aiChain)aiNext(M);}
   SFX.click();return;}
  if(/\bengineer\b/.test(low)&&/\b(i'm|i am|im)\b/.test(low)){p.claimEng=true;const realE=A.find(b=>b.alive&&!b.human&&b.role==='engineer');if(realE&&G.engCount<=1){ins.push({who:realE.id,text:`That's a lie. I'm the Engineer this round, ${p.name}.`});M.claims.push({type:'contra',sp:realE.id,target:p.id});M.lines.splice(M.shown,0,...ins);M.shown+=1;SFX.click();return;}const w=A.find(b=>b.alive&&!b.human&&!b.imp&&b.ventSaw.some(v=>v.id===p.id));ins.push({who:(w||A.find(b=>b.alive&&!b.human)).id,text:w?`Okay, an Engineer can vent. That explains what I saw.`:`Noted, ${p.name} says they're the Engineer.`});M.lines.splice(M.shown,0,...ins);M.shown+=1;M.dtimer=Math.min(90,(M.dtimer||0)+3);SFX.click();return;}
@@ -789,7 +790,7 @@ function updateMeeting(dt){const M=G.M;M.t+=dt;
  if(M.phase==='discuss'){M.dtimer-=dt;if(M.dtimer<=0)startVote();return;}
  if(M.phase==='vote'){M.timer-=dt;const VT=CFG.voteTime;
   for(const a of G.agents){if(!a.alive||a.human||M.votes[a.id]!==undefined)continue;
-  if(M.aiOn&&a.aiVote==null&&M.timer>0.6&&((M.aiQueue&&M.aiQueue.length)||M.aiChain))continue;
+  if(M.aiOn&&M.timer>2&&((M.aiQueue||[]).includes(a.id)||M.aiInflight===a.id))continue;
   if(M.voteAt[a.id]==null)M.voteAt[a.id]=Math.max(0.5,VT*rand(0.3,0.8));if(VT-M.timer>=M.voteAt[a.id]||M.timer<=0.6){M.votes[a.id]=botVote(a,M);voteLanded(a.id);}}
   if(meetingCanEnd(M)&&M.endT==null)M.endT=1.2;if(M.endT!=null)M.endT-=dt;
   if(M.timer<=0||(M.endT!=null&&M.endT<=0)){for(const a of G.agents)if(a.alive&&!a.human&&M.votes[a.id]===undefined)M.votes[a.id]=botVote(a,M);tally();}
@@ -1522,13 +1523,14 @@ function aiCreds(){if(NET.role==='host'&&NET.ws&&NET.hostToken)return{code:NET.c
 function byteLen(str){return new TextEncoder().encode(str).length;}
 function botMemories(b,M){const A=G.agents,N=id=>A[id]?A[id].name:'?',m=[];const since=G.lastMeetT;
  if(b.imp){m.push('You are secretly a Saboteur. Never reveal it; blend in and act like a crewmate.');m.push('Your claimed location for this meeting: '+joinRooms(M.alibi[b.id]||['the hallway'])+'.');}
+ if(b.imp){const rr=roomsIn(b,M.w0,M.w1);if(rr.length)m.push('You actually went to '+joinRooms(rr)+' since the last meeting. Only you know this; keep any claimed alibi near the truth.');}
  else m.push('You are crew'+(b.role?' with the '+ROLES[b.role].name+' role':'')+'. You only know what you saw yourself.');
  for(const w of b.witness)if(w.t>=since)m.push(`You SAW ${N(w.killer)} kill ${N(w.victim)} in ${w.room}.`);
  for(const v of b.ventSaw)if(v.t>=since)m.push(`You saw ${N(v.id)} come out of a vent in ${v.room}.`+(G.engCount?' An Engineer is enabled this round, so it is suspicious, not proof.':''));
  for(const v of b.visual)if(v.t>=since)m.push(`You watched ${N(v.id)} do a visual task in ${v.room}: they are confirmed crew.`);
  if(b.lastTrack!=null&&M.death){const tl=b.trackLog.filter(e=>e.id===b.lastTrack&&Math.abs(e.t-M.td)<3);if(tl.length)m.push(`Your tracker showed ${N(b.lastTrack)} in ${tl[tl.length-1].room} when ${N(M.death.victim)} died.`);}
  if(b.role==='monitor'&&b.vitalsKnown.length)m.push('Vitals showed these players died: '+b.vitalsKnown.map(N).join(', ')+'.');
- for(const c of M.claims)if(c.sp===b.id&&c.type==='contra')m.push(`You caught ${N(c.target)} lying about where they were.`);
+ for(const c of M.claims)if(c.sp===b.id&&c.type==='contra')m.push(`You saw ${N(c.target)} in a different place than what they claimed. It might be a lie, or a mix-up.`);
  if(!b.imp){m.push('You were in '+joinRooms(roomsIn(b,M.w0,M.w1))+' around that time.');if(M.death){const q=sightingsOf(b,M.death.victim,M.td-45,M.td);if(q.length)m.push(`You last saw ${N(M.death.victim)} in ${q[q.length-1].room}.`);}}
  for(const n of socialNotes())m.push('Public history (a clue, not proof): '+n.s);
  if(!b.imp){const seen=new Map();for(let i=b.snaps.length-1;i>=0&&seen.size<8;i--){const sn=b.snaps[i];if(sn.t<since)break;for(const [id,room] of sn.seen)if(!seen.has(id)&&A[id].alive)seen.set(id,`You saw ${N(id)} in ${room} about ${Math.max(1,Math.round(G.t-sn.t))}s before the meeting.`);}m.push(...seen.values());}
@@ -1560,20 +1562,20 @@ async function aiNext(M){if(G.M!==M||!M.aiQueue||!M.aiQueue.length){if(M)M.aiCha
  const b=G.agents[M.aiQueue.shift()];if(!b||!b.alive){aiNext(M);return;}
  let cr=M.aiDead?null:aiCreds();if(!cr&&!NET.role&&!M.aiDead){await aiSoloRefresh();cr=aiCreds();if(!cr)M.aiDead=true;}
  if(G.M!==M)return;if(!cr){aiBotFallback(M,b);aiNext(M);return;}
- const round=M.round,phaseAtCall=M.phase;AI.lastAt=Date.now();
+ const round=M.round,phaseAtCall=M.phase,epochAtCall=M.chatEpoch||0;AI.lastAt=Date.now();
  const body=aiBody(b,M);const targets=G.agents.filter(a=>a.alive&&a!==b).map(a=>a.name);
- let {status,data}=await aiCall(cr,body,12000);AI.lastEnd=Date.now();
+ M.aiInflight=b.id;let {status,data}=await aiCall(cr,body,12000);AI.lastEnd=Date.now();
  AI.log.push({bot:b.name,status,bytes:byteLen(body),err:data&&data.error,t:Date.now()});
  // stale host token (solo room): refresh once, retry this call once
  if(status===401&&!NET.role){const tok=await aiSoloRefresh();if(!tok)M.aiDead=true;if(tok&&G.M===M){const cr2=aiCreds();if(cr2){AI.lastAt=Date.now();({status,data}=await aiCall(cr2,body,12000));AI.lastEnd=Date.now();AI.log.push({bot:b.name,status,bytes:byteLen(body),err:data&&data.error,t:Date.now(),retry:1});}}}
- if(AI.log.length>200)AI.log.splice(0,AI.log.length-200);
+ if(AI.log.length>200)AI.log.splice(0,AI.log.length-200);M.aiInflight=null;
  // stale-reply guard: same meeting, same round, still in a phase where the line makes sense
  if(G.M!==M||M.round!==round)return;
  if(status===429||status===502)M.backoffUntil=Date.now()+4000;
  if(status!==200||!data||typeof data.say!=='string'){aiBotFallback(M,b);aiNext(M);return;}
  M.aiOk++;aiUpdateStatus(M);
- const say=cleanSay(data.say);if(say&&b.alive&&M.phase===phaseAtCall&&(M.phase==='discuss'||M.phase==='vote')){M.lines.splice(M.shown,0,{who:b.id,text:say});chatClaims(say,b);}
- if(M.phase==='discuss'||M.phase==='vote'){const v=data.vote;if(v==='skip')b.aiVote='skip';else{const t=G.agents.find(a=>a.alive&&a!==b&&a.name===v);if(t&&targets.includes(v))b.aiVote=t.id;}}
+ const say=cleanSay(data.say);if(say&&b.alive&&M.phase===phaseAtCall&&(M.phase==='discuss'||M.phase==='vote')){M.lines.splice(M.shown,0,{who:b.id,text:say});M.shown+=1;M.scroll=0;if(!M.chatOpen)SND.play('chat');chatClaims(say,b);}
+ if(M.phase==='discuss'||M.phase==='vote'){const v=data.vote,stale=(M.chatEpoch||0)!==epochAtCall;if(!stale){if(v==='skip')b.aiVote='skip';else{const t=G.agents.find(a=>a.alive&&a!==b&&a.name===v);if(t&&targets.includes(v))b.aiVote=t.id;}}else if(M.phase==='vote'&&M.votes[b.id]===undefined&&!(M.aiQueue||[]).includes(b.id)){M.aiQueue.push(b.id);}}
  aiNext(M);}
 
 // ================= IN-GAME MENU =================
