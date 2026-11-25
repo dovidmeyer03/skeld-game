@@ -556,7 +556,7 @@ function chatClaims(text,sp){const M=G.M,A=G.agents;if(!M)return;const low=Strin
  if(named.length&&/\bvent/.test(low))M.claims.push({type:'vent',sp:sp.id,target:named[0].id});
  else if(named.length&&RX_ACC.test(low)&&!RX_VOUCH.test(low))M.claims.push({type:'accuse',sp:sp.id,target:named[0].id});
  else if(named.length&&RX_VOUCH.test(low))M.claims.push({type:'vouch',sp:sp.id,target:named[0].id});
- if(room&&RX_SELF.test(low)){M.alibi[sp.id]=[room.name];const ins=[];for(const b of shuffle(A.filter(q=>q.alive&&!q.human&&!q.imp&&q!==sp))){const q=sightingsOf(b,sp.id,M.w0,M.w1);const bad=q.find(z=>z.room!==room.name&&!z.room.startsWith('the hall'));if(bad&&!q.some(z=>z.room===room.name)){ins.push({who:b.id,text:`That's not true, ${sp.name}. I saw you in ${bad.room}.`});M.claims.push({type:'contra',sp:b.id,target:sp.id});break;}}if(ins.length&&!M.aiOn)M.lines.splice(M.shown,0,...ins);}}
+ if(room&&RX_SELF.test(low)){M.alibi[sp.id]=[room.name];const ins=[];for(const b of shuffle(A.filter(q=>q.alive&&!q.human&&!q.imp&&q!==sp))){const q=sightingsOf(b,sp.id,M.w0,M.w1);const bad=q.find(z=>z.room!==room.name&&!z.room.startsWith('the hall'));if(bad&&!q.some(z=>z.room===room.name)){ins.push({who:b.id,text:`That's not true, ${sp.name}. I saw you in ${bad.room}.`});M.claims.push({type:'contra',sp:b.id,target:sp.id});break;}}{const ok=scriptIns(M,ins);if(ok.length&&!M.aiOn)M.lines.splice(M.shown,0,...ok);}}}
 function skeptics(spId,tId){const pool=shuffle(G.agents.filter(b=>b.alive&&!b.human&&!b.imp&&b.id!==spId&&b.id!==tId));const r=Math.random();const n=r<0.3?0:r<0.8?1:2;return pool.slice(0,n);}
 const ASKWHY=['Why {T}? What did you see, {S}?','{S}, do you have any evidence?','Based on what, {S}?','Hold on. Why {T}?'];
 function playerSay(raw,spk){if(isClient()&&!spk){const t=String(raw).replace(/\s+/g,' ').trim().slice(0,120);const hq=NET.players.find(q=>q.isHost);if(t)netSend(hq&&hq.clientId?{type:'chat',to:hq.clientId,data:{text:t}}:{type:'chat',data:{text:t}});SFX.click();return;}const M=G.M,A=G.agents,p=spk||G.player;if(!M||(M.phase!=='discuss'&&M.phase!=='vote'))return;if(!p.alive&&!NET.role)return;const text=String(raw).replace(/\s+/g,' ').trim().slice(0,120);if(!text)return;
@@ -592,7 +592,7 @@ function playerSay(raw,spk){if(isClient()&&!spk){const t=String(raw).replace(/\s
    if(q.some(z=>z.room===room.name)){ins.push({who:b.id,text:`I can confirm, I saw ${p.name} in ${room.name}.`});M.claims.push({type:'vouch',sp:b.id,target:p.id});n++;}
    else{const bad=q.find(z=>!z.room.startsWith('the hall'));if(bad){ins.push({who:b.id,text:`That's not true, ${p.name}. I saw you in ${bad.room}.`});M.claims.push({type:'contra',sp:b.id,target:p.id});n++;}}}}
  else if(live.length){const x=live[0];if(!x.human)ins.push({who:x.id,text:`What about me, ${p.name}?`});}
- M.lines.splice(M.shown,0,...ins);M.shown+=1;M.lineT=Math.min(M.lineT,1.6);M.scroll=0;M.idle=0;if(M.phase==='discuss')M.dtimer=Math.min(90,(M.dtimer||0)+(ins.length-1)*LINE_GAP);SFX.click();}
+ const insOk=scriptIns(M,ins);M.lines.splice(M.shown,0,...insOk);M.shown+=1;M.lineT=Math.min(M.lineT,1.6);M.scroll=0;M.idle=0;if(M.phase==='discuss')M.dtimer=Math.min(90,(M.dtimer||0)+(insOk.length-1)*LINE_GAP);SFX.click();}
 
 // ================= BOT NAV =================
 function goTo(b,x,y){b.path=astar(b.x,b.y,x,y)||[];}
@@ -839,7 +839,7 @@ function playerChip(kind,x){const M=G.M,A=G.agents,p=G.player;if(!M||!p.alive)re
   if(!M.aiOn){const a=A[x];if(!a.human&&a.alive){if(a.imp)ins.push({who:x,text:pick([`Me? I was in ${joinRooms(M.alibi[x]||['Comms'])}. That's crazy.`,`Why me? ${p.name} is being really sus right now.`])});else ins.push({who:x,text:`It's not me, I was in ${joinRooms(M.alibi[x]||roomsIn(a,M.w0,M.w1))}.`});
    const ag=A.filter(b=>b.alive&&!b.human&&!b.imp&&b!==a&&(b.witness.some(w=>w.killer===x)||M.claims.some(c=>c.sp===b.id&&c.target===x&&(c.type==='contra'||c.type==='tracked'))));if(ag.length)ins.push({who:ag[0].id,text:`Agreed, ${N(x)} is suspicious.`});else for(const q of skeptics(p.id,x))ins.push({who:q.id,text:fmt(pick(ASKWHY),{T:N(x),S:p.name})});}}}
  else{ins.push({who:p.id,text:`${N(x)} is clear. They were with me.`});M.claims.push({type:'vouch',sp:p.id,target:x});}
- M.lines.splice(M.shown,0,...ins);M.shown+=1;M.scroll=0;SFX.click();}
+ {const ok=scriptIns(M,ins);M.lines.splice(M.shown,0,...ok);}M.shown+=1;M.scroll=0;SFX.click();}
 function voteLanded(id){const M=G.M;M.voteT[id]=M.t;SND.play('vote');const left=G.agents.filter(a=>a.alive&&M.votes[a.id]===undefined).length;M.lines.splice(M.shown,0,{who:-2,vid:id,text:`${G.agents[id].name} has voted. ${left} remaining.`});M.shown++;M.scroll=0;}
 function castVote(t){const M=G.M,p=G.player;if(!M||M.phase!=='vote'||!p.alive||M.votes[p.id]!==undefined)return;if(isClient()){act({a:'vote',t});M.votes[p.id]=t;M.sel=null;SND.play('vote');return;}M.votes[p.id]=t;M.sel=null;voteLanded(p.id);}
 function remoteComposing(){return false;}
@@ -1288,7 +1288,7 @@ function drawMeeting(){const c=ctx,M=G.M;c.fillStyle='rgba(4,6,14,.82)';c.fillRe
  const ph=M.phase==='discuss'?'DISCUSSION':M.phase==='vote'?'VOTING':'RESULTS';const tl=M.phase==='discuss'?M.dtimer:M.phase==='vote'?M.timer:Math.max(0,4-M.t);
  rr(c,Lo.timer.x,Lo.timer.y,Lo.timer.w,Lo.timer.h,7);c.fillStyle='#121a33';c.fill();{const f=fitText(c,ph+' '+Math.max(0,Math.ceil(tl))+'s',Lo.timer.w-10,13);txt(c,f.str,Lo.timer.x+Lo.timer.w/2,Lo.timer.y+15,f.fs,tl<=5&&M.phase!=='results'?'#ff8a7a':'#cfe0ff','center',true);}
  const nAlive=A.filter(a=>a.alive).length,nVoted=Object.keys(M.votes).length;
- rr(c,Lo.count.x,Lo.count.y,Lo.count.w,Lo.count.h,7);c.fillStyle='#121a33';c.fill();{const ai=G.aiStatus==='ai'?' · AI':G.aiStatus==='mixed'?' · AI degraded':G.aiStatus==='fallback'?' · AI unavailable':'';const f=fitText(c,(M.phase==='discuss'?'Alive: '+nAlive:'Votes: '+nVoted+'/'+nAlive)+ai,Lo.count.w-10,12);txt(c,f.str,Lo.count.x+Lo.count.w/2,Lo.count.y+15,f.fs,G.aiStatus==='fallback'?'#ffcf8a':G.aiStatus==='mixed'?'#ffe6a0':'#cfe0ff','center',true);}
+ rr(c,Lo.count.x,Lo.count.y,Lo.count.w,Lo.count.h,7);c.fillStyle='#121a33';c.fill();{const ai=G.aiStatus==='ai'?' · AI':G.aiStatus==='mixed'?' · AI degraded':G.aiStatus==='fallback'?' · AI unavailable':G.aiStatus==='quota'?' · Automatic responses':'';const f=fitText(c,(M.phase==='discuss'?'Alive: '+nAlive:'Votes: '+nVoted+'/'+nAlive)+ai,Lo.count.w-10,12);txt(c,f.str,Lo.count.x+Lo.count.w/2,Lo.count.y+15,f.fs,G.aiStatus==='fallback'?'#ffcf8a':G.aiStatus==='mixed'?'#ffe6a0':'#cfe0ff','center',true);}
  {const tt=M.phase==='results'?'VOTING RESULTS':M.phase==='vote'?'WHO IS THE SABOTEUR?':(M.kind==='body'?'BODY REPORTED BY ':'MEETING CALLED BY ')+M.caller.name.toUpperCase();const f=fitText(c,tt,Lo.title.w,LAND()?16:15);txt(c,f.str,Lo.title.x+Lo.title.w/2,Lo.title.y+Lo.title.h/2,f.fs,'#fff','center',true,3);}
  // AI indicator (small, inside the counter row's right edge would overlap: draw under the timer instead)
  {const mb=Lo.menu;menuIcon(c,mb.x+mb.w/2,mb.y+mb.h/2,mb.w,mb.h);}
@@ -1314,7 +1314,7 @@ function drawMeeting(){const c=ctx,M=G.M;c.fillStyle='rgba(4,6,14,.82)';c.fillRe
  // footer: SKIP VOTE (voting only) + free-text composer (both phases)
  const F=Lo.foot;
  if(!p.alive){const f=fitText(c,NET.role?'You are dead. Only other ghosts can read your chat.':'You are dead. Watch, but you cannot chat or vote.',F.w-8,12,'800 ');txt(c,f.str,F.x+F.w/2,F.y+F.h/2,f.fs,'#ffb3b3','center',true);}
- else if(M.phase==='discuss'&&!M.chatOpen){txt(c,'Open chat (top right) to read and type messages',F.x+F.w/2,F.y+F.h/2,11,'#8f9bb8','center',true);}
+ else if(M.phase==='discuss'&&!M.chatOpen){if(G.aiStatus==='quota'){const f=fitText(c,'AI unavailable (daily limit reached): bots use automatic responses',F.w-8,11,'800 ');txt(c,f.str,F.x+F.w/2,F.y+F.h/2,f.fs,'#ffcf8a','center',true);}else txt(c,'Open chat (top right) to read and type messages',F.x+F.w/2,F.y+F.h/2,11,'#8f9bb8','center',true);}
  else{let cx=F.x,cw2=F.w,cy=F.y+4;
   if(M.phase==='vote'){const sbW=112,sb={x:F.x,y:F.y+4,w:sbW,h:40};const can=M.votes[p.id]===undefined;rr(c,sb.x,sb.y,sb.w,sb.h,10);c.fillStyle=M.sel==='skip'?'#fff6c8':(can?'#d9e1ee':'#6a7080');c.fill();txt(c,'SKIP VOTE',sb.x+sb.w/2,sb.y+20,13,'#151a28','center',true);
    if(can){addHit(sb.x,sb.y,sb.w,sb.h,()=>{M.sel=M.sel==='skip'?null:'skip';SND.play('ui');});if(M.sel==='skip'){rr(c,sb.x+sb.w+6,sb.y+5,30,30,6);c.fillStyle='#2f9a4a';c.fill();txt(c,'✓',sb.x+sb.w+21,sb.y+21,16,'#fff','center',true);addHit(sb.x+sb.w+3,sb.y+2,36,36,()=>castVote('skip'));rr(c,sb.x+sb.w+42,sb.y+5,30,30,6);c.fillStyle='#b33';c.fill();txt(c,'✕',sb.x+sb.w+57,sb.y+21,15,'#fff','center',true);addHit(sb.x+sb.w+39,sb.y+2,36,36,()=>{M.sel=null;});}}
@@ -1651,10 +1651,21 @@ function packBody(body,C){const fits=()=>{body.memories=memFlat(C);const s0=JSON
  return str;}
 function cleanSay(t){t=String(t||'').replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim();if(t.length<=120)return t;const cut=t.slice(0,118);const sp=cut.lastIndexOf(' ');return (sp>60?cut.slice(0,sp):cut).replace(/[,;:\-]+$/,'')+'…';}
 function aiUpdateStatus(M){G.aiStatus=M.aiOk&&!M.aiFail?'ai':M.aiOk&&M.aiFail?'mixed':M.aiFail?'fallback':(M.aiQueue&&M.aiQueue.length?'ai':'fallback');}
-async function aiStartMeeting(M){if(isClient()){M.aiResolved=true;return;}M.aiOk=0;M.aiFail=0;
+// ===== AI quota fallback: only the worker's ai_quota reply switches a meeting to the automatic (scripted/heuristic) bots =====
+function nextUtcMidnight(){const d=new Date();return Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()+1);}
+function aiQuotaActive(){return !!AI.quotaUntil&&Date.now()<AI.quotaUntil;}
+function scriptIns(M,ins){return M.aiSpk?ins.filter(l=>!(l.who>=0&&M.aiSpk[l.who])):ins;}// a bot that spoke through AI never also gets a scripted line
+function aiQuotaFlip(M){AI.quotaUntil=nextUtcMidnight();if(!M||!M.aiOn)return;M.aiOn=false;M.quota=true;G.aiStatus='quota';M.aiQueue=[];M.aiChain=false;M.aiInflight=null;
+ for(const a of G.agents)if(a.alive&&!a.human&&M.votes[a.id]===undefined)a.aiVote=null;// cast votes stay; the rest vote by the heuristic
+ const spoke=M.aiSpk&&Object.keys(M.aiSpk).length>0;
+ if(!spoke&&M.scriptSaved&&M.scriptSaved.length){M.lines.splice(M.shown,0,...M.scriptSaved);M.lineT=Math.min(M.lineT||0,1.0);}// before any bot spoke: the original openers (and their witness claims) are used
+ else if(M.openerClaims){const oc=M.openerClaims;M.claims=M.claims.filter(c=>!oc.includes(c));}// mid-meeting: unspoken opener claims never feed votes
+ M.scriptSaved=null;M.openerClaims=null;}
+async function aiStartMeeting(M){if(isClient()){M.aiResolved=true;return;}if(aiQuotaActive()){M.aiOn=false;M.quota=true;G.aiStatus='quota';M.aiResolved=true;return;}M.aiOk=0;M.aiFail=0;
  let cr=aiCreds();if(!cr&&!NET.role){await aiSoloRefresh();cr=aiCreds();}
  M.aiOn=true;G.aiStatus=cr?'ai':'fallback';// no creds: still AI mode (silent bots, skip votes), never the scripted heuristics
  // AI purity: drop scripted opening lines; the report/call is announced system-style instead
+ M.scriptSaved=M.lines.filter(l=>l.scripted);M.openerClaims=M.claims.slice();
  M.lines=M.lines.filter(l=>!l.scripted);
  if(M.kind==='body'&&!M.lines.some(l=>l.who===-1))M.lines.unshift({who:-1,text:G.agents[M.caller.id].name+' reported '+G.agents[M.body.id].name+"'s body"+(M.droom?' in '+M.droom:'')+'.'});
  M.shown=M.lines.length;// reveal system announcement(s) instantly so model lines never precede the report
@@ -1665,7 +1676,7 @@ function aiBotFallback(M,b){M.aiFail++;aiUpdateStatus(M);
 }
 async function aiCall(cr,body,ctlMs){const ctl=typeof AbortController!=='undefined'?new AbortController():null;const to=setTimeout(()=>{if(ctl)ctl.abort();},ctlMs);let status=0,data=null;
  try{const r=await fetch(AI_URL(cr.code),{method:'POST',headers:{'content-type':'application/json','x-host-token':cr.tok},body,signal:ctl?ctl.signal:undefined});status=r.status;data=await r.json().catch(()=>null);}catch(e){status=-1;}clearTimeout(to);return{status,data};}
-async function aiNext(M){if(G.M!==M||!M.aiQueue||!M.aiQueue.length){if(M)M.aiChain=false;return;}if(M.phase!=='discuss'&&M.phase!=='vote'){M.aiChain=false;return;}
+async function aiNext(M){if(G.M!==M||!M.aiQueue||!M.aiQueue.length){if(M)M.aiChain=false;return;}if(M.phase!=='discuss'&&M.phase!=='vote'||!M.aiOn){M.aiChain=false;return;}
  M.aiChain=true;
  const wait=Math.max(0,AI.lastAt+3500-Date.now(),(AI.lastEnd||0)+2100-Date.now(),(M.backoffUntil||0)-Date.now());if(wait){setTimeout(()=>aiNext(M),wait);return;}
  const b=G.agents[M.aiQueue.shift()];if(!b||!b.alive){aiNext(M);return;}
@@ -1680,6 +1691,8 @@ async function aiNext(M){if(G.M!==M||!M.aiQueue||!M.aiQueue.length){if(M)M.aiCha
  if(AI.log.length>200)AI.log.splice(0,AI.log.length-200);M.aiInflight=null;
  // stale-reply guard: same meeting, same round, still in a phase where the line makes sense
  if(G.M!==M||M.round!==round)return;
+ if(!M.aiOn)return;// switched to automatic responses while this call was in flight: discard it
+ if(data&&data.error==='ai_quota'){aiQuotaFlip(M);return;}
  if(status===429||status===502)M.backoffUntil=Date.now()+4000;
  if(status!==200||!data||typeof data.say!=='string'){aiBotFallback(M,b);aiNext(M);return;}
  M.aiOk++;aiUpdateStatus(M);
@@ -1689,7 +1702,7 @@ async function aiNext(M){if(G.M!==M||!M.aiQueue||!M.aiQueue.length){if(M)M.aiCha
   if(M.aiRetry[b.id]!==ep){M.aiRetry[b.id]=ep;M.aiQueue=(M.aiQueue||[]).filter(id=>id!==b.id);M.aiQueue.unshift(b.id);}// re-call once per epoch, with the fresh chat
   else if(M.phase==='vote'&&M.votes[b.id]===undefined&&!(M.aiQueue||[]).includes(b.id)){M.aiQueue.push(b.id);}// capped: stay silent; uncast voters still get reconsidered
   aiNext(M);return;}
- const say=cleanSay(data.say);if(say&&b.alive&&M.phase===phaseAtCall&&(M.phase==='discuss'||M.phase==='vote')){M.lines.splice(M.shown,0,{who:b.id,text:say});M.shown+=1;M.scroll=0;if(!M.chatOpen)SND.play('chat');chatClaims(say,b);}
+ const say=cleanSay(data.say);if(say&&b.alive&&M.phase===phaseAtCall&&(M.phase==='discuss'||M.phase==='vote')){M.lines.splice(M.shown,0,{who:b.id,text:say});M.shown+=1;M.scroll=0;if(!M.chatOpen)SND.play('chat');(M.aiSpk=M.aiSpk||{})[b.id]=1;chatClaims(say,b);}
  if(M.phase==='discuss'||M.phase==='vote'){const v=data.vote;if(!stale){if(v==='skip')b.aiVote='skip';else{const t=G.agents.find(a=>a.alive&&a!==b&&a.name===v);if(t&&targets.includes(v))b.aiVote=t.id;}}else if(M.phase==='vote'&&M.votes[b.id]===undefined&&!(M.aiQueue||[]).includes(b.id)){M.aiQueue.push(b.id);}}
  aiNext(M);}
 
