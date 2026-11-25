@@ -501,7 +501,8 @@ function chatClaims(text,sp){const M=G.M,A=G.agents;if(!M)return;const low=Strin
  if(room&&RX_SELF.test(low)){M.alibi[sp.id]=[room.name];const ins=[];for(const b of shuffle(A.filter(q=>q.alive&&!q.human&&!q.imp&&q!==sp))){const q=sightingsOf(b,sp.id,M.w0,M.w1);const bad=q.find(z=>z.room!==room.name&&!z.room.startsWith('the hall'));if(bad&&!q.some(z=>z.room===room.name)){ins.push({who:b.id,text:`That's not true, ${sp.name}. I saw you in ${bad.room}.`});M.claims.push({type:'contra',sp:b.id,target:sp.id});break;}}if(ins.length&&!M.aiOn)M.lines.splice(M.shown,0,...ins);}}
 function skeptics(spId,tId){const pool=shuffle(G.agents.filter(b=>b.alive&&!b.human&&!b.imp&&b.id!==spId&&b.id!==tId));const r=Math.random();const n=r<0.3?0:r<0.8?1:2;return pool.slice(0,n);}
 const ASKWHY=['Why {T}? What did you see, {S}?','{S}, do you have any evidence?','Based on what, {S}?','Hold on. Why {T}?'];
-function playerSay(raw,spk){if(isClient()&&!spk){const t=String(raw).replace(/\s+/g,' ').trim().slice(0,120);if(t)netSend({type:'chat',data:{text:t}});SFX.click();return;}const M=G.M,A=G.agents,p=spk||G.player;if(!M||!p.alive||(M.phase!=='discuss'&&M.phase!=='vote'))return;const text=raw.replace(/\s+/g,' ').trim().slice(0,120);if(!text)return;
+function playerSay(raw,spk){if(isClient()&&!spk){const t=String(raw).replace(/\s+/g,' ').trim().slice(0,120);const hq=NET.players.find(q=>q.isHost);if(t)netSend(hq&&hq.clientId?{type:'chat',to:hq.clientId,data:{text:t}}:{type:'chat',data:{text:t}});SFX.click();return;}const M=G.M,A=G.agents,p=spk||G.player;if(!M||(M.phase!=='discuss'&&M.phase!=='vote'))return;if(!p.alive&&!NET.role)return;const text=String(raw).replace(/\s+/g,' ').trim().slice(0,120);if(!text)return;
+ if(!p.alive){M.lines.splice(M.shown,0,{who:p.id,text,ghost:true});M.shown+=1;if(p===G.player){M.scroll=0;SFX.click();}else if(!G.player.alive&&!M.chatOpen)SND.play('chat');return;}// ghost line: flag fixed now; never reaches claims, epoch, AI queue or votes
  const low=text.toLowerCase(),N=id=>A[id].name;const ins=[{who:p.id,text}];
  const named=A.filter(a=>a!==p&&new RegExp('\\b'+a.name.toLowerCase()+'\\b').test(low));const live=named.filter(a=>a.alive);
  const room=ROOMS.find(r=>low.includes(r.name.toLowerCase()))||ROOMS.find(r=>{const w=r.name.toLowerCase().split(' ')[0];return w.length>3&&!['upper','lower'].includes(w)&&new RegExp('\\b'+w+'\\b').test(low);});
@@ -1136,7 +1137,7 @@ function drawHUD(){const c=ctx,p=G.player;
  const lines=p.tasks.map(t=>{const d=TASKDEF[t.kind];const s=curStation(t);return{t:`${s.room}: ${d.name}`+(t.kind==='data'?` (${t.done?2:t.step}/2)`:''),done:t.done,part:t.step>0&&!t.done};});
  if(p.role&&!p.imp)lines.push({t:ROLES[p.role].name+': '+ROLES[p.role].desc,role:true});
  const mine=p.tasks.filter(t=>!t.fake||true),nd=mine.filter(t=>t.done).length;
- if(!G.tasksOpen){const cw3=150;rr(c,bx,ty,cw3,24,8);c.fillStyle='rgba(15,20,30,.78)';c.fill();txt(c,'▸ '+(p.imp?'Fake tasks ':'Tasks ')+nd+'/'+mine.length,bx+8,ty+12,12,p.imp?'#ff8a8a':'#fff','left',true);rr(c,bx+96,ty+9,46,6,3);c.fillStyle='#22302a';c.fill();rr(c,bx+96,ty+9,46*nd/Math.max(1,mine.length),6,3);c.fillStyle='#46d160';c.fill();addHit(bx,ty,cw3,24,()=>{G.tasksOpen=true;try{localStorage.setItem('kestrel_tasks_open','1');}catch(_){}SND.play('ui');});}
+ if(!G.tasksOpen){const lbl='▸ '+(p.imp?'Fake tasks ':'Tasks ')+nd+'/'+mine.length;c.font='800 12px system-ui,-apple-system,Segoe UI,Roboto,sans-serif';const tw=Math.ceil(c.measureText(lbl).width),room=W-SA.r-166-bx,showBar=8+tw+10+46+8<=room,cw3=showBar?8+tw+10+46+8:Math.min(room,8+tw+8);rr(c,bx,ty,cw3,24,8);c.fillStyle='rgba(15,20,30,.78)';c.fill();const lf=fitText(c,lbl,cw3-16,12,'800 ');txt(c,lf.str,bx+8,ty+12,lf.fs,p.imp?'#ff8a8a':'#fff','left',true);if(showBar){const bx2=bx+8+tw+10;rr(c,bx2,ty+9,46,6,3);c.fillStyle='#22302a';c.fill();rr(c,bx2,ty+9,46*nd/Math.max(1,mine.length),6,3);c.fillStyle='#46d160';c.fill();}addHit(bx,ty,cw3,24,()=>{G.tasksOpen=true;try{localStorage.setItem('kestrel_tasks_open','1');}catch(_){}SND.play('ui');});}
  else{const lw=Math.min(LAND()?300:260,W-110);const lh=LAND()?16:18;const h=lines.length*lh+30;rr(c,bx,ty,lw,h,8);c.fillStyle='rgba(15,20,30,.72)';c.fill();
  {const hf=fitText(c,(G.tasksOpen?'▾ ':'▸ ')+(p.imp?'Fake tasks (blend in; they do nothing)':'Tasks'+(p.alive?'':'  (ghost: keep helping!)')),Math.max(80,W-SA.r-166-(bx+8)),12,'800 ');txt(c,hf.str,bx+8,ty+13,hf.fs,p.imp?'#ff8a8a':'#fff','left',true);}addHit(bx,ty,lw,26,()=>{G.tasksOpen=false;try{localStorage.setItem('kestrel_tasks_open','0');}catch(_){}SND.play('ui');});
  if(G.tasksOpen)lines.forEach((l,i)=>{const yy=ty+34+i*lh;c.font='600 11.5px system-ui,sans-serif';const col=l.role?ROLES[p.role].col:l.done?'#4fe06a':l.part?'#ffe066':'#f2f4f8';txt(c,l.role&&l.t.length>48?l.t.slice(0,47)+'…':l.t,bx+10,yy,11.5,col,'left',l.done);if(l.done){const w=c.measureText(l.t).width;c.strokeStyle='#4fe06a';c.lineWidth=1.5;c.beginPath();c.moveTo(bx+10,yy);c.lineTo(bx+10+w,yy);c.stroke();}});}
@@ -1196,14 +1197,15 @@ function drawDeathFx(){const c=ctx,f=G.deathFx,t=2.8-f.t,L=LAND(),S=L?1.5:2.2;c.
 
 // ---------- meeting render ----------
 let MDRAG=null;
-function chatLayout(M,w){const c=ctx;c.font='600 13px system-ui,sans-serif';const items=[];for(let i=0;i<M.shown&&i<M.lines.length;i++){const l=M.lines[i];const ls=wrap(c,l.text,w-64);items.push({l,ls,h:22+ls.length*17});}return items;}
+function chatVis(M){const all=M.lines.slice(0,M.shown);return (G.player&&!G.player.alive)?all:all.filter(l=>!l.ghost);}
+function chatLayout(M,w){const c=ctx;c.font='600 13px system-ui,sans-serif';const items=[];for(const l of chatVis(M)){const ls=wrap(c,l.text,w-64);items.push({l,ls,h:22+ls.length*17});}return items;}
 function drawChat(M,x,y,w,h){const c=ctx;c.save();rr(c,x,y,w,h,10);c.fillStyle='#e8edf5';c.fill();c.clip();const items=chatLayout(M,w);const total=items.reduce((s,i)=>s+i.h+8,0);M.maxScroll=Math.max(0,total-h+16);M.scroll=clamp(M.scroll,0,M.maxScroll);let yy=y+h-8+M.scroll;
  for(let i=items.length-1;i>=0;i--){const it=items[i];yy-=it.h+8;if(yy>y+h||yy+it.h<y)continue;const l=it.l;
   if(l.who===-2){rr(c,x+w*0.18,yy+2,w*0.64,it.h-4,8);c.fillStyle='#dff5e3';c.fill();const va=G.agents[l.vid];drawHead(c,x+w*0.18+16,yy+it.h/2+1,0.6,va.col);txt(c,l.text,x+w/2+8,yy+it.h/2,12,'#1d6a32','center',true);continue;}
   if(l.who<0){txt(c,l.text,x+w/2,yy+it.h/2,12,'#556','center',true);continue;}
-  const a=G.agents[l.who];const mine=a.isPlayer;rr(c,x+44,yy,w-54,it.h,8);c.fillStyle=mine?'#d7f5d9':'#fff';c.fill();c.strokeStyle='#b8c2d2';c.lineWidth=1;c.stroke();
-  circ(c,x+24,yy+18,15);c.fillStyle=a.col;c.fill();c.strokeStyle='#121318';c.lineWidth=2;c.stroke();drawHead(c,x+24,yy+20,0.85,a.col,!a.alive);
-  txt(c,a.name+(mine?' (you)':''),x+52,yy+11,12,shade(a.col,-0.3),'left',true);it.ls.forEach((s,k)=>txt(c,s,x+52,yy+28+k*17,13,'#1d2230','left'));}
+  const a=G.agents[l.who];const mine=a.isPlayer,gh=!!l.ghost;rr(c,x+44,yy,w-54,it.h,8);c.fillStyle=gh?'rgba(120,132,160,.22)':mine?'#d7f5d9':'#fff';c.fill();if(gh)c.setLineDash([4,3]);c.strokeStyle=gh?'#8f9ab0':'#b8c2d2';c.lineWidth=1;c.stroke();c.setLineDash([]);
+  if(gh)c.globalAlpha=0.6;circ(c,x+24,yy+18,15);c.fillStyle=a.col;c.fill();c.strokeStyle='#121318';c.lineWidth=2;c.stroke();drawHead(c,x+24,yy+20,0.85,a.col,gh||!a.alive);c.globalAlpha=1;
+  txt(c,a.name+(mine?' (you)':'')+(gh?'  · ghost':''),x+52,yy+11,12,gh?'#6b7388':shade(a.col,-0.3),'left',true);it.ls.forEach((s,k)=>txt(c,s,x+52,yy+28+k*17,13,gh?'#5d6478':'#1d2230','left'));}
  c.restore();if(M.scroll>0)txt(c,'▼ newer',x+w-40,y+h-12,11,'#667','center',true);}
 function tablet(){const x=SA.l+6,y=SA.t+6,w=W-SA.l-SA.r-12,h=H-SA.t-SA.b-12;return{x,y,w,h};}
 function fitText(c,str,maxW,size,weight){let fs=size;c.font=(weight||'800 ')+fs+'px system-ui,sans-serif';while(fs>9&&c.measureText(str).width>maxW){fs-=1;c.font=(weight||'800 ')+fs+'px system-ui,sans-serif';}if(c.measureText(str).width<=maxW)return{str,fs};let t=str;while(t.length>1&&c.measureText(t+'…').width>maxW)t=t.slice(0,-1);return{str:t+'…',fs};}
@@ -1229,11 +1231,11 @@ function drawMeeting(){const c=ctx,M=G.M;c.fillStyle='rgba(4,6,14,.82)';c.fillRe
  // AI indicator (small, inside the counter row's right edge would overlap: draw under the timer instead)
  {const mb=Lo.menu;menuIcon(c,mb.x+mb.w/2,mb.y+mb.h/2,mb.w,mb.h);}
  // chat toggle with unread dot
- const unread=M.shown>M.seen&&!M.chatOpen;rr(c,Lo.chat.x,Lo.chat.y,Lo.chat.w,Lo.chat.h,7);c.fillStyle=M.chatOpen?'#3a6fd8':'#2b3a66';c.fill();
+ const unread=chatVis(M).length>M.seen&&!M.chatOpen;rr(c,Lo.chat.x,Lo.chat.y,Lo.chat.w,Lo.chat.h,7);c.fillStyle=M.chatOpen?'#3a6fd8':'#2b3a66';c.fill();
  c.fillStyle='#fff';rr(c,Lo.chat.x+11,Lo.chat.y+8,22,13,4);c.fill();c.beginPath();c.moveTo(Lo.chat.x+15,Lo.chat.y+21);c.lineTo(Lo.chat.x+15,Lo.chat.y+26);c.lineTo(Lo.chat.x+20,Lo.chat.y+21);c.fill();
  if(unread){c.fillStyle='#ff3b3b';circ(c,Lo.chat.x+Lo.chat.w-4,Lo.chat.y+4,6);c.fill();}
- addHit(Lo.chat.x-4,Lo.chat.y-4,Lo.chat.w+8,Lo.chat.h+8,()=>{M.chatOpen=!M.chatOpen;M.seen=M.shown;SND.play('ui');});
- if(M.chatOpen)M.seen=M.shown;
+ addHit(Lo.chat.x-4,Lo.chat.y-4,Lo.chat.w+8,Lo.chat.h+8,()=>{M.chatOpen=!M.chatOpen;M.seen=chatVis(M).length;SND.play('ui');});
+ if(M.chatOpen)M.seen=chatVis(M).length;
  // roster: every player, all phases
  const G2=Lo.grid,cols=Lo.LS?(G2.w>700?4:3):2,rows=Math.ceil(A.length/cols),gap=6,cw=(G2.w-(cols-1)*gap)/cols,chh=Math.max(22,Math.min(58,(G2.h-(rows-1)*gap)/rows));
  const order=A.slice().sort((a,b)=>(b.alive-a.alive)||a.id-b.id);const canVote=M.phase==='vote'&&p.alive&&M.votes[p.id]===undefined;
@@ -1249,7 +1251,7 @@ function drawMeeting(){const c=ctx,M=G.M;c.fillStyle='rgba(4,6,14,.82)';c.fillRe
    if(M.sel===a.id){const bs=Math.min(28,chh-6),ox=x+cw-2*bs-12,oy=y+chh/2-bs/2;rr(c,ox,oy,bs,bs,6);c.fillStyle='#2f9a4a';c.fill();txt(c,'✓',ox+bs/2,oy+bs/2+1,16,'#fff','center',true);addHit(ox-3,oy-3,bs+6,bs+6,()=>castVote(a.id));rr(c,ox+bs+6,oy,bs,bs,6);c.fillStyle='#b33';c.fill();txt(c,'✕',ox+bs*1.5+6,oy+bs/2+1,15,'#fff','center',true);addHit(ox+bs+3,oy-3,bs+6,bs+6,()=>{M.sel=null;SND.play('ui');});}}});
  // footer: SKIP VOTE (voting only) + free-text composer (both phases)
  const F=Lo.foot;
- if(!p.alive){txt(c,'You are dead. Watch, but you cannot chat or vote.',F.x+F.w/2,F.y+F.h/2,12,'#ffb3b3','center',true);}
+ if(!p.alive){const f=fitText(c,NET.role?'You are dead. Only other ghosts can read your chat.':'You are dead. Watch, but you cannot chat or vote.',F.w-8,12,'800 ');txt(c,f.str,F.x+F.w/2,F.y+F.h/2,f.fs,'#ffb3b3','center',true);}
  else if(M.phase==='discuss'&&!M.chatOpen){txt(c,'Open chat (top right) to read and type messages',F.x+F.w/2,F.y+F.h/2,11,'#8f9bb8','center',true);}
  else{let cx=F.x,cw2=F.w,cy=F.y+4;
   if(M.phase==='vote'){const sbW=112,sb={x:F.x,y:F.y+4,w:sbW,h:40};const can=M.votes[p.id]===undefined;rr(c,sb.x,sb.y,sb.w,sb.h,10);c.fillStyle=M.sel==='skip'?'#fff6c8':(can?'#d9e1ee':'#6a7080');c.fill();txt(c,'SKIP VOTE',sb.x+sb.w/2,sb.y+20,13,'#151a28','center',true);
@@ -1259,7 +1261,7 @@ function drawMeeting(){const c=ctx,M=G.M;c.fillStyle='rgba(4,6,14,.82)';c.fillRe
   }
  if(M.phase==='results'){const sk=resultVoters(M,'skip');txt(c,'SKIPPED:',F.x+4,F.y+F.h/2,13,'#fff','left',true);sk.forEach((v,j)=>{circ(c,F.x+84+j*15,F.y+F.h/2,6);c.fillStyle=v<0?'#9aa3b5':A[v].col;c.fill();c.strokeStyle='#111';c.lineWidth=1.3;c.stroke();});}
  // chat overlay panel (roster stays visible beside/above it)
- if(M.chatOpen){const full=Lo.LS?{x:G2.x+G2.w*0.42,y:G2.y,w:G2.w*0.58,h:G2.h}:{x:G2.x,y:G2.y+G2.h*0.38,w:G2.w,h:G2.h*0.62};const canType=p.alive&&M.phase!=='results';const r={x:full.x,y:full.y,w:full.w,h:full.h-(canType?48:0)};c.fillStyle='rgba(0,0,0,.35)';rr(c,full.x-3,full.y-3,full.w+6,full.h+6,12);c.fill();M.chatRect=r;drawChat(M,r.x,r.y,r.w,r.h);if(canType){CHAT_POS={x:full.x,y:full.y+full.h-42,w:full.w};}addHit(full.x,full.y,full.w,full.h,()=>{});UI.hits.pop();}
+ if(M.chatOpen){const full=Lo.LS?{x:G2.x+G2.w*0.42,y:G2.y,w:G2.w*0.58,h:G2.h}:{x:G2.x,y:G2.y+G2.h*0.38,w:G2.w,h:G2.h*0.62};const canType=(p.alive||!!NET.role)&&M.phase!=='results';const r={x:full.x,y:full.y,w:full.w,h:full.h-(canType?48:0)};c.fillStyle='rgba(0,0,0,.35)';rr(c,full.x-3,full.y-3,full.w+6,full.h+6,12);c.fill();M.chatRect=r;drawChat(M,r.x,r.y,r.w,r.h);if(canType){CHAT_POS={x:full.x,y:full.y+full.h-42,w:full.w};}addHit(full.x,full.y,full.w,full.h,()=>{});UI.hits.pop();}
  else M.chatRect=null;}
 function resultVoters(M,target){if(M.res&&M.res.tv)return M.res.tv.filter(q=>q[0]===target).map(q=>q[1]);const out=[];for(const k in M.votes)if(M.votes[k]===target)out.push(CFG.anonVotes?-1:+k);return out;}
 function drawPicker(){}
@@ -1356,7 +1358,7 @@ function remoteUpdate(a,dt){if(!killPaused(a))a.kcd-=dt;a.abCD-=dt;if(a.ptrack!=
 function remoteExitVent(a){if(a.inVent==null)return;const v=VENTS[a.inVent];a.inVent=null;ventWitness(a,v);if(a.role==='engineer'&&!a.imp)a.abCD=CFG.engVentCD;sendPriv(a);}
 function hostRecv(m){if(!NET.inGame){if(LG.me)loungeHostRecv(m);return;}if(!G.agents)return;const a=G.agents.find(q=>q.remote===m.from);if(!a)return;const d=(m.data&&typeof m.data==='object')?m.data:{};
  if(m.type==='input'){if(G.mode==='play')a.in={vx:clamp(+d.vx||0,-1,1),vy:clamp(+d.vy||0,-1,1)};return;}
- if(m.type==='chat'){if(G.mode==='meeting'&&a.alive&&typeof d.text==='string'){a.typing=false;playerSay(d.text,a);}return;}
+ if(m.type==='chat'){if(G.mode==='meeting'&&typeof d.text==='string'){a.typing=false;playerSay(d.text,a);}return;}
  if(m.type==='event')hostAction(a,d);}
 function hostAction(a,d){const M=G.M,play=G.mode==='play';
  switch(d.a){
@@ -1388,14 +1390,15 @@ function privFor(a){return{k:'priv',you:a.id,imp:a.imp?1:0,role:a.imp?null:(a.ro
  deaths:a.role==='monitor'?G.deaths.map(x=>[x.victim,Math.round(x.t)]):[],engCount:G.engCount||0,roleList:G.roleList||[]};}
 function inCamView(o){return inHall(o.x,o.y)&&CAMS.some(f=>Math.abs(o.x-f.x)<CAM_W/2+10&&Math.abs(o.y-f.y)<CAM_H/2+20);}
 function viewerSees(h,o){if(o===h)return true;if(G.mode!=='play')return true;if(h.onCams&&o.inVent==null&&inCamView(o))return true;if(h.ptrack===o.id)return true;if(h.imp&&o.imp&&o.inVent==null)return canSee(h,o,visR(h)+60);return canSee(h,o,visR(h)+30);}
-function filterSnap(base,h){const sn=Object.assign({},base);sn.a=base.a.map((r,i)=>{const o=G.agents[i];return viewerSees(h,o)?r:0;});sn.b=base.b.filter(b=>G.mode!=='play'||viewerSees(h,{x:b[1],y:b[2],inVent:null}));return sn;}
+let SNAP_LN_ALL=null;
+function filterSnap(base,h){const sn=Object.assign({},base);if(sn.M&&SNAP_LN_ALL&&!h.alive)sn.M=Object.assign({},base.M,{ln:SNAP_LN_ALL});sn.a=base.a.map((r,i)=>{const o=G.agents[i];return viewerSees(h,o)?r:0;});sn.b=base.b.filter(b=>G.mode!=='play'||viewerSees(h,{x:b[1],y:b[2],inVent:null}));return sn;}
 function sendPriv(a){if(a&&a.remote&&isHost())sendTo(a.remote,privFor(a));}
 function buildSnap(){const r1=x=>Math.round(x*10)/10;
  const sn={k:'s',m:G.mode,t:r1(G.t),a:G.agents.map(a=>[Math.round(a.x),Math.round(a.y),a.face<0?-1:1,a.moving?1:0,a.alive?1:0,a.inVent!=null?1:0,a.vis==='scan'?1:0]),
   b:G.bodies.map(b=>[b.id,Math.round(b.x),Math.round(b.y),b.reported?1:0]),td:CFG.taskBar==='always'?G.tasksDone:CFG.taskBar==='meetings'?G.tasksShown:0,tt:G.tasksTotal,bc:Math.max(0,Math.round(G.buttonCD)),
   sh:G.shots.map(q=>[Math.round(q.x),Math.round(q.y),q.side,Math.round(q.t*100)/100]),cw:camsWatched()?1:0,vo:VENTS.filter(v=>v.open>0).map(v=>v.id)};
  if(G.sab){const S=G.sab;sn.sab={ty:S.type,t:r1(S.t),f:S.pts.map(q=>q.fixed?1:0),c:S.code,h:(S.held||[]).map(x=>x?1:0)};}
- if(G.mode==='meeting'&&G.M){const M=G.M;const shown=M.lines.slice(0,M.shown);let ln=shown.slice(-50).map(l=>[l.who,String(l.text).slice(0,160),l.vid==null?-1:l.vid]);
+ if(G.mode==='meeting'&&G.M){const M=G.M;const shown=M.lines.slice(0,M.shown);const enc=l=>[l.who,String(l.text).slice(0,160),l.vid==null?-1:l.vid,l.ghost?1:0];let ln=shown.filter(l=>!l.ghost).slice(-50).map(enc);SNAP_LN_ALL=shown.some(l=>l.ghost)?shown.slice(-50).map(enc):null;
   const ready=M.ready?Object.keys(M.ready).map(Number):[];
   sn.M={ai:G.aiStatus,kind:M.kind,c:M.caller.id,bd:M.body?M.body.id:-1,ph:M.phase,t:r1(M.t),dt:M.dtimer==null?null:r1(M.dtimer),vt:r1(M.timer||0),ln,vd:Object.keys(M.votes).map(Number),vT:M.voteT,cp:(composing()||remoteComposing())?1:0,rd:ready};
   if(M.res&&(M.phase==='results'||M.phase==='eject')){const R=M.res;sn.M.res={tv:Object.entries(M.votes).map(([v,t])=>[t==='skip'?'skip':+t,CFG.anonVotes?-1:+v]),ej:R.ej,why:R.why,conf:CFG.confirmEjects?1:0,ejImp:CFG.confirmEjects&&R.ej!=null&&G.agents[R.ej].imp?1:0,left:CFG.confirmEjects?G.agents.filter(q=>q.alive&&q.imp&&q.id!==R.ej).length:null};}
@@ -1440,7 +1443,7 @@ function applySnap(sn){if(!G.agents||!G.player)return;const prev=G.mode;const p=
  if(sn.m==='meeting'&&sn.M){const m=sn.M;if(prev!=='meeting'||!G.M){closeMG();resetJoy();G.mapOpen=false;G.deathFx=null;SND.play(m.kind==='body'?'report':'button');MUSIC.duck(true);G.M={kind:m.kind,caller:G.agents[m.c]||G.player,body:m.bd>=0?{id:m.bd}:null,phase:m.ph,t:m.t,lines:[],shown:0,votes:{},voteT:{},sel:null,timer:0,scroll:0,chips:0,picker:null,showChat:false,res:null,claims:[],alibi:{}};SFX.siren();}
   const M=G.M;const oldPh=M.phase;M.phase=m.ph;M.t=m.t;M.dtimer=m.dt;M.timer=m.vt;M.remoteComp=!!m.cp;M.ready={};(m.rd||[]).forEach(id=>M.ready[id]=1);
   if(oldPh!==M.phase){M.sel=null;M.picker=null;if(M.phase!=='discuss')M.asked=0;}
-  const nl=(m.ln||[]).map(r=>({who:r[0],text:r[1],vid:r[2]<0?undefined:r[2]}));if(nl.length>M.shown&&M.shown>0&&!M.chatOpen)SND.play('chat');M.lines=nl;M.shown=nl.length;
+  const nl=(m.ln||[]).map(r=>({who:r[0],text:r[1],vid:r[2]<0?undefined:r[2],ghost:r[3]===1}));if(nl.length>M.shown&&M.shown>0&&!M.chatOpen)SND.play('chat');M.lines=nl;M.shown=nl.length;
   M.voteT=m.vT||{};G.aiStatus=m.ai||'off';if(m.res){M.res={tv:m.res.tv||[],ej:m.res.ej,why:m.res.why,conf:!!m.res.conf,ejImp:m.res.conf?m.res.ejImp:null,left:m.res.left,cnt:{},skip:0};}else{const mine=M.votes[p.id];M.votes={};(m.vd||[]).forEach(id=>M.votes[id]=true);if(mine!==undefined&&M.votes[p.id]===undefined&&M.phase==='vote')M.votes[p.id]=mine;M.res=null;}}
  if(prev==='meeting'&&sn.m==='play'){MUSIC.duck(false);G.M=null;CI.value='';CI.blur();G.cam.x=p.x;G.cam.y=p.y;}
  if(sn.end&&!G.end){G.mode='end';closeMG();for(const a of G.agents)a.imp=false;(sn.end.imps||[]).forEach(id=>{if(G.agents[id])G.agents[id].imp=true;});(sn.end.roles||[]).forEach(r=>{if(G.agents[r[0]])G.agents[r[0]].role=r[1];});G.end={win:!!sn.end.win,why:String(sn.end.why||''),t:0,pwin:(!!sn.end.win)!==p.imp};MUSIC.duck(false);SND.play(G.end.pwin?'win':'lose');}}
@@ -1537,19 +1540,19 @@ function botMemories(b,M){const A=G.agents,N=id=>A[id]?A[id].name:'?',m=[];const
  return m.map(x=>x.slice(0,200)).slice(0,40);}
 function topAccused(M){const sc={};for(const c of M.claims)if(['accuse','witness','contra','vent','tracked'].includes(c.type))sc[c.target]=(sc[c.target]||0)+1;let best=null,bv=0;for(const k in sc)if(sc[k]>bv){bv=sc[k];best=+k;}return best==null?'':G.agents[best].name;}
 function aiBody(b,M){const A=G.agents;const body={botId:b.name,meeting:{phase:M.phase==='vote'?'voting':'discussion',round:M.round||G.round||1,accused:topAccused(M),dead:A.filter(a=>!a.alive).map(a=>a.name)},
-  memories:botMemories(b,M),chat:M.lines.slice(0,M.shown).filter(l=>l.who!==-2).map(l=>({speaker:l.who>=0?A[l.who].name:'System',text:String(l.text).slice(0,280)})).slice(-30),targets:A.filter(a=>a.alive&&a!==b).map(a=>a.name)};
+  memories:botMemories(b,M),chat:M.lines.slice(0,M.shown).filter(l=>l.who!==-2&&!l.ghost).map(l=>({speaker:l.who>=0?A[l.who].name:'System',text:String(l.text).slice(0,280)})).slice(-30),targets:A.filter(a=>a.alive&&a!==b).map(a=>a.name)};
  let str=JSON.stringify(body);while(byteLen(str)>4000){if(body.chat.length>8)body.chat.shift();else if(body.memories.length>4)body.memories.pop();else if(body.chat.length)body.chat.shift();else if(body.memories.length>1)body.memories.pop();else{body.memories[0]=body.memories[0].slice(0,80);str=JSON.stringify(body);break;}str=JSON.stringify(body);}
  return str;}
 function cleanSay(t){t=String(t||'').replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim();if(t.length<=120)return t;const cut=t.slice(0,118);const sp=cut.lastIndexOf(' ');return (sp>60?cut.slice(0,sp):cut).replace(/[,;:\-]+$/,'')+'…';}
 function aiUpdateStatus(M){G.aiStatus=M.aiOk&&!M.aiFail?'ai':M.aiOk&&M.aiFail?'mixed':M.aiFail?'fallback':(M.aiQueue&&M.aiQueue.length?'ai':'fallback');}
 async function aiStartMeeting(M){if(isClient()){M.aiResolved=true;return;}M.aiOk=0;M.aiFail=0;
  let cr=aiCreds();if(!cr&&!NET.role){await aiSoloRefresh();cr=aiCreds();}
- if(!cr){G.aiStatus='fallback';M.aiResolved=true;return;}// creds truly missing: whole meeting uses the heuristic bots
- M.aiOn=true;G.aiStatus='ai';
+ M.aiOn=true;G.aiStatus=cr?'ai':'fallback';// no creds: still AI mode (silent bots, skip votes), never the scripted heuristics
  // AI purity: drop scripted opening lines; the report/call is announced system-style instead
  M.lines=M.lines.filter(l=>!l.scripted);
  if(M.kind==='body'&&!M.lines.some(l=>l.who===-1))M.lines.unshift({who:-1,text:G.agents[M.caller.id].name+' reported '+G.agents[M.body.id].name+"'s body"+(M.droom?' in '+M.droom:'')+'.'});
  M.shown=M.lines.length;// reveal system announcement(s) instantly so model lines never precede the report
+ if(!cr){M.aiDead=true;M.aiQueue=[];M.aiResolved=true;return;}
  M.aiQueue=shuffle(G.agents.filter(a=>a.alive&&!a.human)).map(a=>a.id);M.aiResolved=true;aiNext(M);}
 function aiBotFallback(M,b){M.aiFail++;aiUpdateStatus(M);
  // AI mode purity: no scripted fallback lines; a failed bot stays silent and the status reads AI degraded / AI unavailable.
@@ -1738,7 +1741,7 @@ function drawLounge(){const c=ctx,L=LAND(),m=LG.me;if(!LMAP)buildLoungeMap();if(
   if(NET.myId){fitC(n+'/10 players',py+60,12,'#cfd8f5',true);fitC('bots fill the rest',py+77,10,'#8f9bb8',false);}else fitC(NET.status||'Connecting…',py+66,11,'#cfd8f5',true);}
  const sbY=py+ph+8;
  if(solo||host){bigBtn(c,px,sbY,pw,40,'START',(solo||(NET.myId&&NET.ws))?'#2f8a5a':'#444b5c',!!(solo||(NET.myId&&NET.ws)),()=>loungeStart());}
- else txt(c,NET.myId?'Waiting for the host to start…':'',px+pw/2,sbY+20,11,'#cfd8f5','center',true);
+ else if(NET.myId){c.font='800 11px system-ui,sans-serif';const wl=c.measureText('Waiting for the host to start…').width<=pw-10?['Waiting for the host to start…']:['Waiting for the host','to start…'];wl.forEach((s2,i)=>{const f=fitText(c,s2,pw-10,11,'800 ');txt(c,f.str,px+pw/2,sbY+14+i*14,f.fs,'#cfd8f5','center',true);});}
  bigBtn(c,SA.l+8,SA.t+8,86,34,'LEAVE','#7a2f3a',true,()=>{SND.play('ui');if(NET.role)netClose();LG.active=false;G={mode:'title',rt:G.rt};});
  const msg=G.busy?'A round is in progress. You will join the next one.':G.full?'This round is full. Wait for the next one.':NET.err||'';if(msg)txt(c,msg,W/2-(L?hudR/2:0),SA.t+22,12,'#ffd84a','center',true,3);
  if(LG.toast)txt(c,LG.toast.text,W/2-(L?hudR/2:0),H*0.2,14,'#ffe066','center',true,3);
