@@ -1116,10 +1116,10 @@ function updateCore(dt){G.rt+=dt;
 const VC={cv:null,k:0,x0:0,y0:0,x1:0,y1:0,builds:0,lastMs:0};
 function mapView(Z,camx,camy){const k=Z*DPR,vw=W/Z,vh=H/Z,vx0=camx-vw/2,vy0=camy-vh/2;
  if(!VC.cv||Math.abs(VC.k-k)>1e-9||vx0<VC.x0||vy0<VC.y0||vx0+vw>VC.x1||vy0+vh>VC.y1){const t0=performance.now();let m=0.35,cw,ch;
-  for(;;){cw=Math.ceil(vw*(1+2*m)*k);ch=Math.ceil(vh*(1+2*m)*k);if(cw*ch<=12e6||m<=0.02)break;m-=0.03;}// stays far below the ~16.7M px iOS canvas limit
-  VC.k=k;VC.x0=vx0-vw*m;VC.y0=vy0-vh*m;VC.x1=VC.x0+cw/k;VC.y1=VC.y0+ch/k;if(!VC.cv)VC.cv=document.createElement('canvas');if(VC.cv.width!==cw||VC.cv.height!==ch){VC.cv.width=cw;VC.cv.height=ch;}
-  const g=VC.cv.getContext('2d');g.setTransform(1,0,0,1,0,0);g.clearRect(0,0,cw,ch);g.setTransform(k,0,0,k,-VC.x0*k,-VC.y0*k);g.save();g.beginPath();g.rect(VC.x0,VC.y0,cw/k,ch/k);g.clip();drawMapVec(g);g.restore();VC.builds++;VC.lastMs=performance.now()-t0;}
- const c=ctx;c.save();c.setTransform(1,0,0,1,0,0);c.drawImage(VC.cv,Math.round(((VC.x0-camx)*Z+W/2)*DPR),Math.round(((VC.y0-camy)*Z+H/2)*DPR));c.restore();}
+  let kr=k;for(;;){cw=Math.ceil(vw*(1+2*m)*kr);ch=Math.ceil(vh*(1+2*m)*kr);if(cw*ch<=12e6)break;if(m>0.02){m-=0.03;continue;}kr*=Math.sqrt(12e6/(cw*ch))*0.99;}VC.kr=kr;// stays far below the ~16.7M px iOS canvas limit
+  VC.k=k;VC.x0=vx0-vw*m;VC.y0=vy0-vh*m;VC.x1=VC.x0+cw/kr;VC.y1=VC.y0+ch/kr;if(!VC.cv)VC.cv=document.createElement('canvas');if(VC.cv.width!==cw||VC.cv.height!==ch){VC.cv.width=cw;VC.cv.height=ch;}
+  const g=VC.cv.getContext('2d');g.setTransform(1,0,0,1,0,0);g.clearRect(0,0,cw,ch);g.setTransform(kr,0,0,kr,-VC.x0*kr,-VC.y0*kr);g.save();g.beginPath();g.rect(VC.x0,VC.y0,cw/kr,ch/kr);g.clip();drawMapVec(g);g.restore();VC.builds++;VC.lastMs=performance.now()-t0;}
+ const c=ctx;c.save();c.setTransform(1,0,0,1,0,0);{const bx=Math.round(((VC.x0-camx)*Z+W/2)*DPR),by=Math.round(((VC.y0-camy)*Z+H/2)*DPR);if(VC.kr===k)c.drawImage(VC.cv,bx,by);else c.drawImage(VC.cv,bx,by,VC.cv.width*k/VC.kr,VC.cv.height*k/VC.kr);}c.restore();}
 function zoom(){return LAND()?clamp(H/300,1.05,2.2):clamp(Math.min(W,H)/290,1.1,2.2);}
 function w2s(x,y){const Z=zoom();return{x:(x-G.cam.x)*Z+W/2,y:(y-G.cam.y)*Z+H/2};}
 function render(){CHAT_POS=null;MP_POS=null;try{renderInner();}finally{placeChat();placeMP();}}
@@ -1836,7 +1836,7 @@ function loungeUpdate(dt){G.rt+=dt;const m=LG.me;if(!m)return;if(LG.toast){LG.to
  if(isClient()&&NET.myId){LG.sendT-=dt;if(LG.sendT<=0){LG.sendT=0.1;netSend({type:'input',data:{lx:Math.round(m.x),ly:Math.round(m.y),f:m.face,m:m.moving?1:0}});}}}
 function loungeHostTick(dt){if(!(NET.role==='host'&&NET.ws&&!NET.inGame&&LG.me&&NET.myId))return;LG.snapT-=dt;if(LG.snapT<=0){LG.snapT=0.1;netSend({type:'snapshot',data:loungeSnap()});}}
 // ---- render ----
-function buildLoungeMap(S){S=S||2;while(LW*S*LH*S>12e6)S*=0.9;LMAP=document.createElement('canvas');LMAP.S=S;MSEED=777;LMAP.width=Math.ceil(LW*S);LMAP.height=Math.ceil(LH*S);const c=LMAP.getContext('2d');c.scale(S,S);
+function buildLoungeMap(S){S=S||2;LMAP=document.createElement('canvas');LMAP.S=S;MSEED=777;LMAP.width=Math.ceil(LW*S);LMAP.height=Math.ceil(LH*S);const c=LMAP.getContext('2d');c.scale(S,S);
  c.fillStyle='#06070d';c.fillRect(0,0,LW,LH);for(let i=0;i<70;i++){c.fillStyle='rgba(255,255,255,'+(0.3+mrnd()*0.5)+')';c.fillRect(mrnd()*LW,mrnd()*LH,1.2,1.2);}
  rr(c,24,30,LW-48,LH-44,30);c.fillStyle='#1a1d26';c.fill();rr(c,40,44,LW-80,LH-72,22);c.fillStyle='#2b303c';c.fill();
  c.fillStyle='#5d6576';c.fillRect(LFLOOR.x,LFLOOR.y,LFLOOR.w,LFLOOR.h);c.strokeStyle='rgba(0,0,0,.22)';c.lineWidth=2;for(let x=LFLOOR.x;x<LFLOOR.x+LFLOOR.w;x+=40)for(let y=LFLOOR.y;y<LFLOOR.y+LFLOOR.h;y+=40){c.strokeRect(x+1,y+1,38,38);}
@@ -1859,9 +1859,20 @@ function buildLoungeMap(S){S=S||2;while(LW*S*LH*S>12e6)S*=0.9;LMAP=document.crea
  c.save();c.globalAlpha=0.15;txt(c,'DEPARTURE LOUNGE',LW/2,LFLOOR.y+LFLOOR.h-22,14,'#000','center',true);c.restore();}
 function drawLounge(){const c=ctx,L=LAND(),m=LG.me;if(!m){enterLounge({solo:!NET.role});return;}
  c.fillStyle='#05060c';c.fillRect(0,0,W,H);
- const hudR=L?150:0,hudT=L?0:120;const avW=W-16-hudR,avH=H-16-hudT;const Z=Math.min(avW/LW,avH/LH);const ox=8+(avW-LW*Z)/2,oy=8+hudT+(avH-LH*Z)/2;LG.view={Z,ox,oy};
- if(!LMAP||Math.abs(LMAP.S-Z*DPR)>1e-6&&LW*Z*DPR*LH*Z*DPR<=12e6||!LMAP.S)buildLoungeMap(Z*DPR);
- c.save();c.setTransform(1,0,0,1,0,0);if(Math.abs(LMAP.S-Z*DPR)<1e-6)c.drawImage(LMAP,Math.round(ox*DPR),Math.round(oy*DPR));else c.drawImage(LMAP,Math.round(ox*DPR),Math.round(oy*DPR),Math.round(LW*Z*DPR),Math.round(LH*Z*DPR));c.restore();
+ // layout: landscape/desktop keep the whole room beside a right-hand HUD column; portrait zooms in under a top HUD band
+ const hudR=L?150:0,ph=92;const hudT=L?0:(8+ph+8+40+10);
+ const vpX=SA.l+8,vpY=SA.t+8+hudT,vpW=W-SA.l-SA.r-16-hudR,vpH=H-SA.t-SA.b-16-hudT;
+ const Zfit=Math.min(vpW/LW,vpH/LH),Z=L?Zfit:Math.min(Zfit*1.9,Math.max(Zfit,1.4));// phones zoom ~1.9x; tablets just fit the room
+ const vw=vpW/Z,vh=vpH/Z;LG.cam=LG.cam||{x:m.x,y:m.y};{const k=0.14;LG.cam.x+=(m.x-LG.cam.x)*k;LG.cam.y+=(m.y-LG.cam.y)*k;}
+ const camX=vw>=LW?LW/2:clamp(LG.cam.x,vw/2,LW-vw/2),camY=vh>=LH?(L?LH/2:vh/2-8/Z):clamp(LG.cam.y-20,vh/2,LH-vh/2);
+ const ox=vpX+vpW/2-camX*Z,oy=vpY+vpH/2-camY*Z;LG.view={Z,ox,oy};
+ // lounge art rasterised at Z*DPR (capped at 6M px) and blitted unscaled at whole device pixels, inside the clipped room area
+ {const tS=Math.min(Z*DPR,Math.sqrt(6e6/(LW*LH)));if(!LMAP||!LMAP.S||Math.abs(LMAP.S-tS)>1e-6)buildLoungeMap(tS);}// lounge art at Z*DPR, capped at 6M px
+ c.save();c.beginPath();c.rect(vpX-8,vpY-6,vpW+16,vpH+14);c.clip();
+ {// copy only the visible part: 1:1 when the texture is at Z*DPR, scaled only if it hit the cap (large tablets)
+  const f=Math.abs(LMAP.S-Z*DPR)<1e-6?1:Z*DPR/LMAP.S,dx=Math.round(ox*DPR),dy=Math.round(oy*DPR),dw=LMAP.width*f,dh=LMAP.height*f;
+  const cx0=Math.max(0,Math.floor((vpX-8)*DPR),dx),cy0=Math.max(0,Math.floor((vpY-6)*DPR),dy),cx1=Math.min(Math.ceil(W*DPR),Math.ceil((vpX+vpW+8)*DPR),dx+dw),cy1=Math.min(Math.ceil(H*DPR),Math.ceil((vpY+vpH+8)*DPR),dy+dh);
+  if(cx1>cx0&&cy1>cy0){c.save();c.setTransform(1,0,0,1,0,0);c.drawImage(LMAP,(cx0-dx)/f,(cy0-dy)/f,(cx1-cx0)/f,(cy1-cy0)/f,cx0,cy0,cx1-cx0,cy1-cy0);c.restore();}}
  c.save();c.translate(ox,oy);c.scale(Z,Z);
  // station highlight
  const pulse=0.5+0.5*Math.sin(G.rt*5);for(const st of LSTATIONS){const near=LG.near===st;const tx=st.id==='settings'?210:434;c.strokeStyle=near?`rgba(255,255,255,${0.6+0.4*pulse})`:`rgba(255,230,80,${0.25+0.3*pulse})`;c.lineWidth=near?3:2;rr(c,tx-46,st.id==='settings'?80:68,92,st.id==='settings'?36:48,8);c.stroke();txt(c,st.id==='settings'?'SETTINGS':'WARDROBE',tx,st.id==='settings'?128:128,10,near?'#fff':'#ffe066','center',true,3);}
@@ -1869,10 +1880,10 @@ function drawLounge(){const c=ctx,L=LAND(),m=LG.me;if(!m){enterLounge({solo:!NET
  COSMAP={};const list=[];const add=(p,name,isMe)=>{const col=PAL[p.colIdx][1];COSMAP[col]={hat:p.hat,pants:p.pants,shirt:p.shirt||'none'};list.push({y:p.y,d:()=>{if(p.spawnT>0){const a=Math.min(1,p.spawnT/1.1);c.fillStyle=`rgba(255,255,255,${0.55*a})`;c.beginPath();c.ellipse(p.x,p.y-24,20+10*(1-a),34,0,0,TAU);c.fill();}
    drawSpacer(c,p.x,p.y,col,p.face,p.walk,p.moving,p.spawnT>0?Math.max(0.35,1-p.spawnT):1);c.font='700 10px system-ui,sans-serif';c.textAlign='center';c.textBaseline='middle';c.lineWidth=3;c.strokeStyle='rgba(0,0,0,.85)';c.strokeText(name,p.x,p.y-66);c.fillStyle=isMe?'#fff':'#dfe6f2';c.fillText(name,p.x,p.y-66);}});};
  add(m,NET.role?(m.name||NET.name):'You',true);for(const k in LG.others)add(LG.others[k],LG.others[k].name,false);for(const b of LG.bots)add(b,b.name,false);
- list.sort((a,b)=>a.y-b.y).forEach(o=>o.d());c.restore();
+ list.sort((a,b)=>a.y-b.y).forEach(o=>o.d());c.restore();c.restore();
  // ---- HUD ----
  const host=NET.role==='host',solo=!NET.role;
- const pw=L?140:Math.min(240,W-120),px=W-SA.r-pw-8,py=SA.t+8,ph=92;rr(c,px,py,pw,ph,10);c.fillStyle='rgba(12,16,28,.88)';c.fill();c.strokeStyle='#4b5874';c.lineWidth=2;c.stroke();
+ const pw=L?140:Math.min(240,W-SA.r-8-(SA.l+102)),px=W-SA.r-pw-8,py=SA.t+8;rr(c,px,py,pw,ph,10);c.fillStyle='rgba(12,16,28,.88)';c.fill();c.strokeStyle='#4b5874';c.lineWidth=2;c.stroke();
  const fitC=(str,y,size,colr,bold,strokeW)=>{const f=fitText(c,str,pw-14,size,bold?'800 ':'600 ');txt(c,f.str,px+pw/2,y,f.fs,colr,'center',bold,strokeW);};
  if(solo){fitC('SOLO LOUNGE',py+24,13,'#5ee0ff',true);fitC('You + 9 bots',py+48,12,'#cfd8f5',true);fitC('Bots fill the empty seats',py+70,10,'#8f9bb8',false);}
  else{fitC('ROOM CODE',py+14,10,'#8f9bb8',true);fitC(NET.code||'…',py+36,20,'#fff',true,3);const n=Math.min(10,NET.players.length||1);
@@ -1880,9 +1891,10 @@ function drawLounge(){const c=ctx,L=LAND(),m=LG.me;if(!m){enterLounge({solo:!NET
  const sbY=py+ph+8;
  if(solo||host){bigBtn(c,px,sbY,pw,40,'START',(solo||(NET.myId&&NET.ws))?'#2f8a5a':'#444b5c',!!(solo||(NET.myId&&NET.ws)),()=>loungeStart());}
  else if(NET.myId){c.font='800 11px system-ui,sans-serif';const wl=c.measureText('Waiting for the host to start…').width<=pw-10?['Waiting for the host to start…']:['Waiting for the host','to start…'];wl.forEach((s2,i)=>{const f=fitText(c,s2,pw-10,11,'800 ');txt(c,f.str,px+pw/2,sbY+14+i*14,f.fs,'#cfd8f5','center',true);});}
- bigBtn(c,SA.l+100,SA.t+8,72,34,'⌨ KEYS','#3b4566',true,()=>{SND.play('ui');openKeys();});
- bigBtn(c,SA.l+8,SA.t+8,86,34,'LEAVE','#7a2f3a',true,()=>{SND.play('ui');if(NET.role)netClose();LG.active=false;G={mode:'title',rt:G.rt};});
- const msg=G.busy?'A round is in progress. You will join the next one.':G.full?'This round is full. Wait for the next one.':NET.err||'';if(msg)txt(c,msg,W/2-(L?hudR/2:0),SA.t+22,12,'#ffd84a','center',true,3);
+ {const leave=()=>{SND.play('ui');if(NET.role)netClose();LG.active=false;G={mode:'title',rt:G.rt};},keys=()=>{SND.play('ui');openKeys();};
+  if(L){const by=sbY+(solo||host?48:(NET.myId?40:8)),bw=(pw-6)/2;bigBtn(c,px,by,bw,34,'LEAVE','#7a2f3a',true,leave);bigBtn(c,px+bw+6,by,bw,34,'⌨ KEYS','#3b4566',true,keys);}
+  else{bigBtn(c,SA.l+8,SA.t+8,86,34,'LEAVE','#7a2f3a',true,leave);bigBtn(c,SA.l+8,SA.t+48,86,34,'⌨ KEYS','#3b4566',true,keys);}}
+ const msg=G.busy?'A round is in progress. You will join the next one.':G.full?'This round is full. Wait for the next one.':NET.err||'';if(msg){const f=fitText(c,msg,vpW-12,12,'800 ');txt(c,f.str,vpX+vpW/2,vpY+16,f.fs,'#ffd84a','center',true,3);}
  if(LG.toast)txt(c,LG.toast.text,W/2-(L?hudR/2:0),H*0.2,14,'#ffe066','center',true,3);
  // USE button (lights near a station) + label
  const r=L?clamp(H*0.13,40,52):clamp(W*0.13,42,54),ux=W-SA.r-r-14,uy=H-SA.b-r-20;const nr=LG.near;
