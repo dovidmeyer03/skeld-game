@@ -464,12 +464,56 @@ cv.addEventListener('lostpointercapture',e=>{if(e.pointerId===JOY.id)resetJoy();
 ['touchstart','touchmove','touchend','gesturestart','dblclick','contextmenu'].forEach(ev=>document.addEventListener(ev,e=>{if(e.target&&e.target.closest&&e.target.closest('#chatbox,#mpbox'))return;if(e.cancelable)e.preventDefault();},{passive:false}));
 addEventListener('blur',()=>{resetJoy();for(const k in KEYS)KEYS[k]=false;releasePad();});
 document.addEventListener('visibilitychange',()=>{if(document.hidden){resetJoy();releasePad();}});
-addEventListener('keydown',e=>{const ae=document.activeElement;if(ae===CI||ae===MPN||ae===MPC)return;KEYS[e.key.toLowerCase()]=true;ensureAudio();if(G.mode==='play'&&!G.mg){const k=e.key.toLowerCase();if(k==='e'||k===' ')doUse();if(k==='r')doReport();if(k==='m')G.mapOpen=!G.mapOpen;}if(G.mode==='title'&&e.key==='Enter')enterLounge({solo:true});if(G.mode==='lobby'&&!G.mg){const k=e.key.toLowerCase();if(k==='e'||k===' ')loungeUse();if(k==='escape')LG.wardrobe=false;}});
-addEventListener('keydown',e=>{const ae=document.activeElement;if(ae!==CI&&ae!==MPN&&ae!==MPC&&G.mode==='play'&&!G.mg&&e.key.toLowerCase()==='q')doAbility();});
-addEventListener('keydown',e=>{const ae=document.activeElement;if(e.key==='Escape'&&ae!==CI&&ae!==MPN&&ae!==MPC&&(G.mode==='play'||G.mode==='meeting')&&!G.mg){G.menuOpen=G.menuOpen?null:'menu';}});
+// ===== keyboard: rebindable shortcuts (saved locally), one guarded handler =====
+const KB_DEF={up:'w',left:'a',down:'s',right:'d',use:'e',report:'r',kill:'f',sabotage:'g',ability:'q',map:'m',chat:'t'};
+const KB_LABEL={up:'Move up',left:'Move left',down:'Move down',right:'Move right',use:'Use / interact / vent',report:'Report body',kill:'Kill (Saboteur)',sabotage:'Sabotage menu (Saboteur)',ability:'Role ability',map:'Map',chat:'Open meeting chat'};
+const KB_ALT={up:'arrowup',left:'arrowleft',down:'arrowdown',right:'arrowright',use:' '};
+const KB_RESERVED=['escape','enter','tab','f1','?','shift','control','alt','meta','capslock','pageup','pagedown'];
+function kbValid(v){return typeof v==='string'&&v.length>=1&&v.length<=12&&v===v.toLowerCase()&&!KB_RESERVED.includes(v);}
+function loadKB(){let o=null;try{o=JSON.parse(localStorage.getItem('kestrel_keys')||'null');}catch(_){o=null;}if(!o||typeof o!=='object'||Array.isArray(o))return Object.assign({},KB_DEF);
+ const out={},used=new Set();for(const a in KB_ALT)used.add(KB_ALT[a]);
+ for(const a in KB_DEF){const v=o[a];if(kbValid(v)&&(!used.has(v)||KB_ALT[a]===v)&&!Object.values(out).includes(v))out[a]=v;}
+ for(const a in KB_DEF){if(out[a])continue;const d=KB_DEF[a];if(Object.values(out).includes(d))return Object.assign({},KB_DEF);out[a]=d;}// any clash: safe fallback to defaults
+ return out;}
+let KB=loadKB();
+function saveKB(){try{localStorage.setItem('kestrel_keys',JSON.stringify(KB));}catch(_){}}
+function keyName(k){if(k===' ')return 'Space';if(k.startsWith('arrow'))return k.charAt(5).toUpperCase()+k.slice(6)+' arrow';return k.length===1?k.toUpperCase():k.charAt(0).toUpperCase()+k.slice(1);}
+function held(a){return !!(KEYS[KB[a]]||(KB_ALT[a]&&KEYS[KB_ALT[a]]));}
+function typingNow(){const ae=document.activeElement;return !!ae&&(ae===CI||ae===MPN||ae===MPC||ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.isContentEditable);}
+const KG={open:false,cap:null,msg:'',scroll:0,max:0,list:null,drag:null};
+function kbTry(a,k){if(KB_RESERVED.includes(k)){KG.msg=keyName(k)+' is reserved.';return false;}
+ for(const b in KB)if(b!==a&&KB[b]===k){KG.msg=keyName(k)+' is already used for '+KB_LABEL[b]+'.';return false;}
+ for(const b in KB_ALT)if(b!==a&&KB_ALT[b]===k){KG.msg=keyName(k)+' is already used for '+KB_LABEL[b]+'.';return false;}
+ KB[a]=k;saveKB();KG.msg=KB_LABEL[a]+' set to '+keyName(k)+'.';return true;}
+function kbReset(){KB=Object.assign({},KB_DEF);saveKB();KG.cap=null;KG.msg='Shortcuts reset to defaults.';}
+function openKeys(){KG.open=true;KG.cap=null;KG.msg='';KG.scroll=0;resetJoy();for(const k in KEYS)KEYS[k]=false;}
+addEventListener('keydown',e=>{if(typingNow())return;// never while a text field has focus
+ const k=e.key.toLowerCase();
+ if(KG.cap){e.preventDefault();if(k==='escape'){KG.cap=null;KG.msg='';return;}if(['shift','control','alt','meta','capslock'].includes(k))return;if(kbTry(KG.cap,k))KG.cap=null;return;}
+ if(k==='f1'||e.key==='?'){e.preventDefault();if(KG.open)KG.open=false;else openKeys();return;}
+ if(KG.open){if(k==='escape')KG.open=false;else if(k==='pagedown'||k==='arrowdown')KG.scroll+=k==='pagedown'?200:40;else if(k==='pageup'||k==='arrowup')KG.scroll-=k==='pageup'?200:40;KG.scroll=clamp(KG.scroll,0,KG.max||0);e.preventDefault();return;}
+ KEYS[k]=true;ensureAudio();
+ if(G.mode==='settings'&&['pagedown','pageup','arrowdown','arrowup'].includes(k)){e.preventDefault();SET_SCROLL=Math.max(0,SET_SCROLL+(k==='pagedown'?200:k==='pageup'?-200:k==='arrowdown'?40:-40));}
+ if(G.mode==='meeting'&&G.M&&G.M.chatOpen&&(k==='pageup'||k==='pagedown')){e.preventDefault();const M=G.M;M.scroll=clamp((M.scroll||0)+(k==='pageup'?150:-150),0,M.maxScroll||0);}
+ if(G.mode==='meeting'&&G.M&&!G.menuOpen&&k===KB.chat){e.preventDefault();G.M.chatOpen=true;setTimeout(()=>{if(CHATBOX.style.display!=='none'&&!CHATBOX.hidden)CI.focus();},80);}
+ if(G.mode==='play'&&!G.mg&&!G.menuOpen){const p=G.player;
+  if(k===KB.use||k===KB_ALT.use)doUse();if(k===KB.report)doReport();if(k===KB.map)G.mapOpen=!G.mapOpen;if(k===KB.ability)doAbility();if(k===KB.kill)doKill_P();
+  if(k===KB.sabotage&&p&&p.imp&&!G.sab&&G.sabCD<=0){G.sabMenu=!G.sabMenu;SFX.click();}}
+ if(G.mode==='title'&&k==='enter')enterLounge({solo:true});
+ if(G.mode==='lobby'&&!G.mg){if(k===KB.use||k===KB_ALT.use)loungeUse();if(k==='escape')LG.wardrobe=false;}
+ if(k==='escape'&&(G.mode==='play'||G.mode==='meeting')&&!G.mg){G.menuOpen=G.menuOpen?null:'menu';}
+});
+// focusing a text field releases held keys so nothing keeps moving behind it
+addEventListener('focusin',()=>{if(typingNow())for(const k in KEYS)KEYS[k]=false;});
+// mouse wheel / trackpad scrolling for the scrollable panels (touch is unchanged)
+addEventListener('wheel',e=>{const dy=e.deltaY*(e.deltaMode===1?16:e.deltaMode===2?H:1);
+ if(KG.open){KG.scroll=clamp(KG.scroll+dy,0,KG.max||0);e.preventDefault();return;}
+ if(G.mode==='settings'){SET_SCROLL=Math.max(0,SET_SCROLL+dy);e.preventDefault();return;}
+ if(G.mode==='meeting'&&G.M&&G.M.chatOpen){const M=G.M;M.scroll=clamp((M.scroll||0)-dy,0,M.maxScroll||0);e.preventDefault();}},{passive:false});
 addEventListener('keyup',e=>{KEYS[e.key.toLowerCase()]=false;});
 function onDown(x,y,id){
  const h=hitTest(x,y);
+ if(KG.open){const L0=KG.list;if(!h||h.list){if(L0&&x>L0.x&&x<L0.x+L0.w&&y>L0.y&&y<L0.y+L0.h)KG.drag={id,y,s:KG.scroll,moved:false,h};else if(h)h.fn(x,y);}else h.fn(x,y);return;}
  if(!h&&G.mode==='settings'&&G.setRect&&y>G.setRect.y&&y<G.setRect.y+G.setRect.h){SET_DRAG={id,y,s:SET_SCROLL};return;}
  if(h){h.fn(x,y);return;}
  if(G.mode==='play'){
@@ -481,12 +525,14 @@ function onDown(x,y,id){
  else if(G.mode==='lobby'&&!LG.wardrobe&&JOY.id===null&&x<W*0.55){JOY.id=id;JOY.bx=x;JOY.by=y;JOY.x=x;JOY.y=y;JOY.vx=0;JOY.vy=0;try{cv.setPointerCapture(id);}catch(_){}}
 }
 function onMove(x,y,id){
+ if(KG.drag&&KG.drag.id===id){if(Math.abs(y-KG.drag.y)>6)KG.drag.moved=true;KG.scroll=clamp(KG.drag.s-(y-KG.drag.y),0,KG.max||0);return;}
  if(SET_DRAG&&SET_DRAG.id===id){SET_SCROLL=Math.max(0,SET_DRAG.s-(y-SET_DRAG.y));return;}
  if(id===JOY.id){JOY.x=x;JOY.y=y;joyUpdate();return;}
  if(G.mode==='play'&&G.mg&&G.mg.move)G.mg.move(x,y,id);
  if(G.mode==='meeting')meetingMove(x,y,id);
 }
 function onUp(x,y,id){
+ if(KG.drag&&KG.drag.id===id){const d=KG.drag;KG.drag=null;if(!d.moved&&d.h&&d.h.list)d.h.fn(x,y);return;}
  if(SET_DRAG&&SET_DRAG.id===id){SET_DRAG=null;return;}
  if(id===JOY.id){resetJoy();return;}
  if(G.mode==='play'&&G.mg&&G.mg.up)G.mg.up(x,y,id);
@@ -1040,9 +1086,9 @@ function checkWin(){if(G.mode==='end'||G.mode==='meeting')return;const ai=G.agen
 function endGame(win,why){if(G.mode==='end')return;closeMG();resetJoy();G.mode='end';G.end={win,why,t:0,pwin:win!==G.player.imp};G.sab=null;MUSIC.duck(false);SND.play(G.end.pwin?'win':'lose');}
 
 // ================= UPDATE =================
-function update(dt){aiTick(dt);MUSIC.apply();if(G.menuOpen&&!NET.role&&(G.mode==='play'||G.mode==='meeting')){G.rt+=dt;return;}loungeHostTick(dt);if(G.mode==='lobby'){loungeUpdate(dt);netTick(dt);return;}if(isClient()){clientUpdate(dt);netTick(dt);return;}if(G.mode==='mpmenu'||G.mode==='lobby'||G.mode==='closed'||G.mode==='settings'){G.rt+=dt;netTick(dt);return;}updateCore(dt);netTick(dt);}
+function update(dt){aiTick(dt);MUSIC.apply();if((G.menuOpen||KG.open)&&!NET.role&&(G.mode==='play'||G.mode==='meeting')){G.rt+=dt;return;}loungeHostTick(dt);if(G.mode==='lobby'){loungeUpdate(dt);netTick(dt);return;}if(isClient()){clientUpdate(dt);netTick(dt);return;}if(G.mode==='mpmenu'||G.mode==='lobby'||G.mode==='closed'||G.mode==='settings'){G.rt+=dt;netTick(dt);return;}updateCore(dt);netTick(dt);}
 function movePlayer(dt){const p=G.player;
- if(!G.mg&&!G.deathFx&&p.inVent==null){let vx=JOY.vx,vy=JOY.vy;if(KEYS['a']||KEYS['arrowleft'])vx-=1;if(KEYS['d']||KEYS['arrowright'])vx+=1;if(KEYS['w']||KEYS['arrowup'])vy-=1;if(KEYS['s']||KEYS['arrowdown'])vy+=1;const m=Math.hypot(vx,vy);if(m>1){vx/=m;vy/=m;}
+ if(!G.mg&&!G.deathFx&&p.inVent==null){let vx=JOY.vx,vy=JOY.vy;if(held('left'))vx-=1;if(held('right'))vx+=1;if(held('up'))vy-=1;if(held('down'))vy+=1;const m=Math.hypot(vx,vy);if(m>1){vx/=m;vy/=m;}
   const sp=(p.alive?PSPD:PSPD*1.15)*dt;p.moving=m>0.05;if(p.moving){const nx=p.x+vx*sp,ny=p.y+vy*sp;if(!p.alive){p.x=clamp(nx,10,WW-10);p.y=clamp(ny,20,WH-10);}else{if(canStand(nx,p.y,11))p.x=nx;if(canStand(p.x,ny,11))p.y=ny;}if(Math.abs(vx)>0.1)p.face=vx>0?1:-1;p.walk+=dt*11*Math.max(0.5,m);}else p.walk+=dt;return{vx,vy};}
  p.moving=false;return{vx:0,vy:0};}
 function updateCore(dt){G.rt+=dt;
@@ -1064,7 +1110,8 @@ function updateCore(dt){G.rt+=dt;
 function zoom(){return LAND()?clamp(H/300,1.05,2.2):clamp(Math.min(W,H)/290,1.1,2.2);}
 function w2s(x,y){const Z=zoom();return{x:(x-G.cam.x)*Z+W/2,y:(y-G.cam.y)*Z+H/2};}
 function render(){CHAT_POS=null;MP_POS=null;try{renderInner();}finally{placeChat();placeMP();}}
-function renderInner(){ctx.setTransform(DPR,0,0,DPR,0,0);UI.hits.length=0;UI.btns=[];ctx.fillStyle='#05060c';ctx.fillRect(0,0,W,H);
+function renderInner(){renderScene();if(KG.open)drawKeysGuide();}
+function renderScene(){ctx.setTransform(DPR,0,0,DPR,0,0);UI.hits.length=0;UI.btns=[];ctx.fillStyle='#05060c';ctx.fillRect(0,0,W,H);
  if(G.mode==='settings')return drawSettings();if(G.mode==='mpmenu')return drawMPMenu();if(G.mode==='lobby')return drawLounge();if(G.mode==='closed')return drawClosed();
  if(G.mode==='title')return drawTitle();
  if(G.mode==='reveal')return drawReveal();
@@ -1300,6 +1347,7 @@ function drawTitle(){const c=ctx,t=G.rt,L=LAND();stars(t);
  const sc=L?1.05:1.3;for(let i=0;i<10;i++){const x=((i*W/(L?10:8)+t*40)%(W+80))-40;c.save();c.translate(x,ly);c.scale(sc,sc);drawSpacer(c,0,0,PAL[i][1],1,t*10+i,true,1);c.restore();}
  const bw=Math.min(220,(W-48)/2),b={x:W/2-bw-8,y:by,w:bw,h:L?52:60},b2={x:W/2+8,y:by,w:bw,h:L?52:60};
  rr(c,b.x,b.y,b.w,b.h,14);c.fillStyle='#3a6fd8';c.fill();c.strokeStyle='#fff';c.lineWidth=3;c.stroke();txt(c,'PLAY SOLO',b.x+b.w/2,b.y+b.h/2,20,'#fff','center',true);addHit(b.x,b.y,b.w,b.h,()=>{ensureAudio();SFX.ok();enterLounge({solo:true});});
+ bigBtn(c,SA.l+10,SA.t+10,104,38,'⌨ KEYS','#3b4566',true,()=>{SND.play('ui');openKeys();});
  bigBtn(c,W-SA.r-150,SA.t+10,140,38,'⚙ SETTINGS','#3b4566',true,()=>{SND.play('ui');openSettings('title');});
  rr(c,b2.x,b2.y,b2.w,b2.h,14);c.fillStyle='#2f8a5a';c.fill();c.strokeStyle='#fff';c.lineWidth=3;c.stroke();txt(c,'MULTIPLAYER',b2.x+b2.w/2,b2.y+b2.h/2,20,'#fff','center',true);addHit(b2.x,b2.y,b2.w,b2.h,()=>{ensureAudio();SFX.click();G={mode:'mpmenu',rt:G.rt||0};NET.err='';});
  const tips=L?['Each round you are crew, or (1 in 3) one of the 2 secret Saboteurs. Drag on the left to move; USE at glowing consoles.','Crew: do tasks, REPORT bodies, ring the bell, vote Saboteurs out. Saboteur: KILL, VENT, SABOTAGE, and lie well.']:['You are crew, or (1 in 3) a secret Saboteur.','Drag on the left to move. USE at glowing consoles.','Crew: tasks, REPORT, bell, vote them out.','Saboteur: KILL, VENT, SABOTAGE, and lie well.'];tips.forEach((s2,i)=>{const f=fitText(c,s2,W-SA.l-SA.r-24,12,'600 ');txt(c,f.str,W/2,ty+i*(L?18:20),f.fs,'#cfd8f5','center');});}
@@ -1650,11 +1698,12 @@ function leaveConsequence(){if(!NET.role)return'This discards the round and retu
  return'Your crewmate is taken over by a bot for the rest of this round (it keeps its tasks and its vote), and the round continues for the others. You return to the home screen.';}
 function leaveGame(){SND.play('ui');closeMG();resetJoy();G.menuOpen=null;MUSIC.duck(false);if(NET.role)netClose();LG.active=false;CI.value='';CI.blur();G={mode:'title',rt:G.rt||0};}
 function drawGameMenu(){const c=ctx;c.fillStyle='rgba(0,0,0,.6)';c.fillRect(0,0,W,H);addHit(0,0,W,H,()=>{});
- const pw=Math.min(360,W-32),confirm=G.menuOpen==='confirm';c.font='600 13px system-ui,sans-serif';const lines=confirm?wrap(c,leaveConsequence(),pw-36):[];const ph=confirm?96+lines.length*18+60:178;
+ const pw=Math.min(360,W-32),confirm=G.menuOpen==='confirm';c.font='600 13px system-ui,sans-serif';const lines=confirm?wrap(c,leaveConsequence(),pw-36):[];const ph=confirm?96+lines.length*18+60:236;
  const px=(W-pw)/2,py=Math.max(SA.t+10,(H-ph)/2);rr(c,px,py,pw,ph,14);c.fillStyle='#161d33';c.fill();c.strokeStyle='#5a6a9c';c.lineWidth=3;c.stroke();
  if(!confirm){txt(c,'MENU',px+pw/2,py+26,17,'#fff','center',true);
   bigBtn(c,px+18,py+50,pw-36,46,'RESUME','#3a6fd8',true,()=>{G.menuOpen=null;SND.play('ui');});
-  bigBtn(c,px+18,py+108,pw-36,46,'LEAVE GAME','#7a2f3a',true,()=>{G.menuOpen='confirm';SND.play('ui');});return;}
+  bigBtn(c,px+18,py+108,pw-36,46,'KEYBOARD SHORTCUTS','#3b4566',true,()=>{SND.play('ui');openKeys();});
+  bigBtn(c,px+18,py+166,pw-36,46,'LEAVE GAME','#7a2f3a',true,()=>{G.menuOpen='confirm';SND.play('ui');});return;}
  txt(c,NET.role==='host'?'End the room for everyone?':'Leave this game?',px+pw/2,py+28,16,'#fff','center',true);
  lines.forEach((l,i)=>txt(c,l,px+18,py+62+i*18,13,'#cfd8f5','left'));
  const by=py+ph-60,bw2=(pw-48)/2;bigBtn(c,px+18,by,bw2,44,'CANCEL','#3b4566',true,()=>{G.menuOpen='menu';SND.play('ui');});
@@ -1752,7 +1801,7 @@ function applyLob(d){if(!LG.me)return;const seen=new Set();for(const r of (Array
 // ---- update ----
 function loungeUpdate(dt){G.rt+=dt;const m=LG.me;if(!m)return;if(LG.toast){LG.toast.t-=dt;if(LG.toast.t<=0)LG.toast=null;}if(LG.pendingT>0)LG.pendingT-=dt;
  if(m.spawnT>0){m.spawnT-=dt;m.moving=false;m.walk+=dt;}
- else{let vx=JOY.vx,vy=JOY.vy;if(!LG.wardrobe){if(KEYS['a']||KEYS['arrowleft'])vx-=1;if(KEYS['d']||KEYS['arrowright'])vx+=1;if(KEYS['w']||KEYS['arrowup'])vy-=1;if(KEYS['s']||KEYS['arrowdown'])vy+=1;}else{vx=0;vy=0;}
+ else{let vx=JOY.vx,vy=JOY.vy;if(!LG.wardrobe){if(held('left'))vx-=1;if(held('right'))vx+=1;if(held('up'))vy-=1;if(held('down'))vy+=1;}else{vx=0;vy=0;}
   const mg=Math.hypot(vx,vy);if(mg>1){vx/=mg;vy/=mg;}m.moving=mg>0.05;if(m.moving){const sp=110*dt;const nx=m.x+vx*sp,ny=m.y+vy*sp;if(lcanStand(nx,m.y,11))m.x=nx;if(lcanStand(m.x,ny,11))m.y=ny;if(Math.abs(vx)>0.1)m.face=vx>0?1:-1;m.walk+=dt*11*Math.max(0.5,mg);}else m.walk+=dt;}
  for(const k in LG.others){const o=LG.others[k];const kk=Math.min(1,dt*10);o.x+=(o.tx-o.x)*kk;o.y+=(o.ty-o.y)*kk;o.walk+=o.moving?dt*11:dt;}
  for(const b of LG.bots){if(b.spawnT>0){b.spawnT-=dt;b.walk+=dt;continue;}if(b.tx==null||b.wait>0){b.moving=false;b.walk+=dt;b.wait-=dt;if(b.wait<=0){if(b.seated&&Math.random()<0.5){b.wait=rand(3,8);continue;}let tries=0;do{b.tx=rand(110,530);b.ty=rand(130,385);tries++;}while(!lcanStand(b.tx,b.ty,11)&&tries<30);b.seated=false;}continue;}
@@ -1803,6 +1852,7 @@ function drawLounge(){const c=ctx,L=LAND(),m=LG.me;if(!LMAP)buildLoungeMap();if(
  const sbY=py+ph+8;
  if(solo||host){bigBtn(c,px,sbY,pw,40,'START',(solo||(NET.myId&&NET.ws))?'#2f8a5a':'#444b5c',!!(solo||(NET.myId&&NET.ws)),()=>loungeStart());}
  else if(NET.myId){c.font='800 11px system-ui,sans-serif';const wl=c.measureText('Waiting for the host to start…').width<=pw-10?['Waiting for the host to start…']:['Waiting for the host','to start…'];wl.forEach((s2,i)=>{const f=fitText(c,s2,pw-10,11,'800 ');txt(c,f.str,px+pw/2,sbY+14+i*14,f.fs,'#cfd8f5','center',true);});}
+ bigBtn(c,SA.l+100,SA.t+8,72,34,'⌨ KEYS','#3b4566',true,()=>{SND.play('ui');openKeys();});
  bigBtn(c,SA.l+8,SA.t+8,86,34,'LEAVE','#7a2f3a',true,()=>{SND.play('ui');if(NET.role)netClose();LG.active=false;G={mode:'title',rt:G.rt};});
  const msg=G.busy?'A round is in progress. You will join the next one.':G.full?'This round is full. Wait for the next one.':NET.err||'';if(msg)txt(c,msg,W/2-(L?hudR/2:0),SA.t+22,12,'#ffd84a','center',true,3);
  if(LG.toast)txt(c,LG.toast.text,W/2-(L?hudR/2:0),H*0.2,14,'#ffe066','center',true,3);
@@ -1830,6 +1880,25 @@ function drawWardrobe(){const c=ctx,L=LAND(),m=LG.me;c.fillStyle='rgba(0,0,0,.6)
   list.forEach((it,i)=>{const x=R0.x+(i%cols)*(cw+8),y=gy+Math.floor(i/cols)*(chh+8);const sel=(m[kind]||'none')===it.id;rr(c,x,y,cw,chh,10);c.fillStyle=sel?'#2a3b6a':'#1b2544';c.fill();c.strokeStyle=sel?'#fff':'#2b3446';c.lineWidth=sel?3:1.5;c.stroke();
    const cos={hat:'none',pants:'none',shirt:'none'};cos[kind]=it.id;const k=Math.min(cw,chh)/(kind==='hat'?62:72);c.save();c.translate(x+cw/2,y+chh*(kind==='hat'?0.92:0.8));c.scale(k,k);if(kind==='hat'){c.beginPath();c.rect(-40,-80,80,62);c.clip();c.translate(0,22);}drawSpacer(c,0,0,col,1,0,false,1,false,cos);c.restore();
    txt(c,it.name,x+cw/2,y+12,Math.max(9,Math.min(12,cw*0.12)),'#dfe6f2','center',true,2);addHit(x,y,cw,chh,()=>setMyCos({[kind]:it.id}));});}}
+
+// ================= KEYBOARD SHORTCUT GUIDE =================
+function drawKeysGuide(){const c=ctx,L=LAND();c.setTransform(DPR,0,0,DPR,0,0);c.fillStyle='rgba(0,0,0,.65)';c.fillRect(0,0,W,H);UI.hits.length=0;addHit(0,0,W,H,()=>{});
+ const pw=Math.min(560,W-SA.l-SA.r-20),ph=H-SA.t-SA.b-20,px=(W-pw)/2,py=SA.t+10;rr(c,px,py,pw,ph,14);c.fillStyle='#161d33';c.fill();c.strokeStyle='#5a6a9c';c.lineWidth=3;c.stroke();
+ txt(c,'KEYBOARD SHORTCUTS',px+16,py+22,L?15:16,'#fff','left',true);
+ const cx=px+pw-24,cy=py+22;c.fillStyle='#c33';circ(c,cx,cy,15);c.fill();c.strokeStyle='#fff';c.lineWidth=3;c.beginPath();c.moveTo(cx-5,cy-5);c.lineTo(cx+5,cy+5);c.moveTo(cx+5,cy-5);c.lineTo(cx-5,cy+5);c.stroke();addHit(cx-20,cy-20,40,40,()=>{KG.open=false;KG.cap=null;SND.play('ui');});
+ const msg=KG.cap?'Press a key for '+KB_LABEL[KG.cap]+' (Esc cancels)':(KG.msg||'Click an action, then press its new key.');{const f=fitText(c,msg,pw-32,12,'800 ');txt(c,f.str,px+16,py+46,f.fs,KG.cap?'#ffd84a':/reserved|already/.test(KG.msg)?'#ff8a8a':'#9fb0d6','left',true);}
+ const footH=52,top=py+60,bot=py+ph-footH,rh=L?30:34;KG.list={x:px+8,y:top,w:pw-16,h:bot-top};
+ const rows=Object.keys(KB_DEF).map(a=>({a,label:KB_LABEL[a],key:keyName(KB[a])+(KB_ALT[a]?'   (also '+keyName(KB_ALT[a])+')':'')}));
+ const fixed=[['Esc','Menu; closes panels and the wardrobe'],['F1 or ?','This shortcut list'],['Enter','Send a chat message'],['Use key in the lobby','Wardrobe and game settings'],['Wheel / PageUp / PageDown','Scroll settings, meeting chat and this list'],['Arrow up / down','Scroll in settings and this list']];
+ const total=(rows.length+1+fixed.length)*rh;KG.max=Math.max(0,total-(bot-top));KG.scroll=clamp(KG.scroll,0,KG.max);
+ c.save();c.beginPath();c.rect(px+6,top,pw-12,bot-top);c.clip();let y=top-KG.scroll;const kw=Math.min(200,pw*0.42);
+ for(const r of rows){if(y+rh>top-rh&&y<bot){const cap=KG.cap===r.a;rr(c,px+10,y+2,pw-20,rh-4,7);c.fillStyle=cap?'#3a4a80':'#1f2947';c.fill();{const f=fitText(c,r.label,pw-kw-44,13,'800 ');txt(c,f.str,px+20,y+rh/2,f.fs,'#e6ecf8','left',true);}
+   rr(c,px+pw-kw-18,y+5,kw,rh-10,6);c.fillStyle=cap?'#ffd84a':'#2b3a66';c.fill();{const f=fitText(c,cap?'press a key…':r.key,kw-10,12,'800 ');txt(c,f.str,px+pw-18-kw/2,y+rh/2,f.fs,cap?'#1a1a1a':'#fff','center',true);}
+   if(y>=top-4&&y+rh<=bot+4){const a=r.a;addHit(px+10,Math.max(top,y+2),pw-20,rh-4,()=>{if(KG.drag&&KG.drag.moved)return;KG.cap=KG.cap===a?null:a;KG.msg='';SND.play('ui');});UI.hits[UI.hits.length-1].list=true;}}y+=rh;}
+ txt(c,'Fixed keys',px+16,y+rh/2+2,12,'#8f9bb8','left',true);y+=rh;
+ for(const [k,d] of fixed){{const f=fitText(c,d,pw-kw-44,12,'600 ');txt(c,f.str,px+20,y+rh/2,f.fs,'#b9c6ee','left');}{const f=fitText(c,k,kw,12,'800 ');txt(c,f.str,px+pw-18-kw/2,y+rh/2,f.fs,'#cfd8f5','center',true);}y+=rh;}
+ c.restore();if(KG.max>0){const vh=bot-top,sh=vh*vh/total;c.fillStyle='rgba(255,255,255,.25)';rr(c,px+pw-8,top+KG.scroll/total*vh,4,sh,2);c.fill();}
+ const bw=Math.min(190,(pw-48)/2);bigBtn(c,px+16,py+ph-footH+6,bw,40,'RESET DEFAULTS','#555d70',true,()=>{kbReset();SND.play('ui');});bigBtn(c,px+pw-16-bw,py+ph-footH+6,bw,40,'DONE','#3a6fd8',true,()=>{KG.open=false;KG.cap=null;SND.play('ui');});}
 
 // ================= BOOT =================
 buildGrid();buildSpots();buildVents();buildMap();
