@@ -1554,7 +1554,7 @@ function recordHistory(M){const A=G.agents,N=id=>A[id]?A[id].name:'?',S=G.social
  for(const b of A){if(b.human||!b.alive)continue;const v=M.votes[b.id];if(v===undefined)continue;b.voteHist=b.voteHist||[];let t;
   if(v==='skip')t=`In meeting ${rd} you skipped`+(R0.ej!=null?`; ${N(R0.ej)} was ejected.`:open.length?'; the accusation was not resolved.':'; nobody was ejected.');
   else{t=`In meeting ${rd} you voted for ${N(v)}; `+(R0.ej===v?`${N(v)} was ejected`+(CFG.confirmEjects?(A[v].imp?' and was confirmed a Saboteur.':' and was confirmed NOT a Saboteur.'):'.'):`${N(v)} was not ejected.`);
-   const own=said.find(l=>l.who===b.id&&new RegExp('\\b'+A[v].name.toLowerCase()+'\\b').test(String(l.text).toLowerCase()));if(own){const q=String(own.text).trim();t+=` You had said: "${q.length>80?q.slice(0,78)+'…':q}"`;}}
+   const own=said.find(l=>{if(l.who!==b.id)return false;const lw=String(l.text).toLowerCase();return new RegExp('\\b'+A[v].name.toLowerCase()+'\\b').test(lw)&&RX_ACC.test(lw)&&!RX_VOUCH.test(lw);});/* reason only from an actual accusation of that target */if(own){const q=String(own.text).trim();t+=` You had said: "${q.length>80?q.slice(0,78)+'…':q}"`;}}
   b.voteHist.push(t);if(b.voteHist.length>3)b.voteHist.shift();
   b.contraHist=b.contraHist||[];for(const c of M.claims)if(c.sp===b.id&&c.type==='contra'&&!b.contraHist.some(x=>x.target===c.target&&x.round===rd))b.contraHist.push({target:c.target,round:rd});if(b.contraHist.length>3)b.contraHist.splice(0,b.contraHist.length-3);}}
 // classes: role (never trimmed) | now (this meeting) | hard (own kill-witness, own visual) | unc | vote | pub | sight
