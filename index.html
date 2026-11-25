@@ -497,7 +497,7 @@ function chatClaims(text,sp){const M=G.M,A=G.agents;if(!M)return;const low=Strin
  if(named.length&&/\bvent/.test(low))M.claims.push({type:'vent',sp:sp.id,target:named[0].id});
  else if(named.length&&RX_ACC.test(low)&&!RX_VOUCH.test(low))M.claims.push({type:'accuse',sp:sp.id,target:named[0].id});
  else if(named.length&&RX_VOUCH.test(low))M.claims.push({type:'vouch',sp:sp.id,target:named[0].id});
- if(room&&RX_SELF.test(low)){M.alibi[sp.id]=[room.name];const ins=[];for(const b of shuffle(A.filter(q=>q.alive&&!q.human&&!q.imp&&q!==sp))){const q=sightingsOf(b,sp.id,M.w0,M.w1);const bad=q.find(z=>z.room!==room.name&&!z.room.startsWith('the hall'));if(bad&&!q.some(z=>z.room===room.name)){ins.push({who:b.id,text:`That's not true, ${sp.name}. I saw you in ${bad.room}.`});M.claims.push({type:'contra',sp:b.id,target:sp.id});break;}}if(ins.length)M.lines.splice(M.shown,0,...ins);}}
+ if(room&&RX_SELF.test(low)){M.alibi[sp.id]=[room.name];const ins=[];for(const b of shuffle(A.filter(q=>q.alive&&!q.human&&!q.imp&&q!==sp))){const q=sightingsOf(b,sp.id,M.w0,M.w1);const bad=q.find(z=>z.room!==room.name&&!z.room.startsWith('the hall'));if(bad&&!q.some(z=>z.room===room.name)){ins.push({who:b.id,text:`That's not true, ${sp.name}. I saw you in ${bad.room}.`});M.claims.push({type:'contra',sp:b.id,target:sp.id});break;}}if(ins.length&&!M.aiOn)M.lines.splice(M.shown,0,...ins);}}
 function skeptics(spId,tId){const pool=shuffle(G.agents.filter(b=>b.alive&&!b.human&&!b.imp&&b.id!==spId&&b.id!==tId));const r=Math.random();const n=r<0.3?0:r<0.8?1:2;return pool.slice(0,n);}
 const ASKWHY=['Why {T}? What did you see, {S}?','{S}, do you have any evidence?','Based on what, {S}?','Hold on. Why {T}?'];
 function playerSay(raw,spk){if(isClient()&&!spk){const t=String(raw).replace(/\s+/g,' ').trim().slice(0,120);if(t)netSend({type:'chat',data:{text:t}});SFX.click();return;}const M=G.M,A=G.agents,p=spk||G.player;if(!M||!p.alive||(M.phase!=='discuss'&&M.phase!=='vote'))return;const text=raw.replace(/\s+/g,' ').trim().slice(0,120);if(!text)return;
@@ -774,8 +774,8 @@ function botVote(b,M){const A=G.agents;
 function playerChip(kind,x){const M=G.M,A=G.agents,p=G.player;if(!M||!p.alive)return;M.picker=null;M.chips++;const N=id=>A[id].name;
  if(isClient()){netSend({type:'chat',data:{text:kind==='accuse'?`I think ${N(x)} is suspicious.`:`${N(x)} is clear. They were with me.`}});SFX.click();return;}
  const ins=[];if(kind==='accuse'){ins.push({who:p.id,text:`I think ${N(x)} is suspicious.`});M.claims.push({type:'accuse',sp:p.id,target:x});
-  const a=A[x];if(!a.human&&a.alive){if(a.imp)ins.push({who:x,text:pick([`Me? I was in ${joinRooms(M.alibi[x]||['Comms'])}. That's crazy.`,`Why me? ${p.name} is being really sus right now.`])});else ins.push({who:x,text:`It's not me, I was in ${joinRooms(M.alibi[x]||roomsIn(a,M.w0,M.w1))}.`});
-   const ag=A.filter(b=>b.alive&&!b.human&&!b.imp&&b!==a&&(b.witness.some(w=>w.killer===x)||M.claims.some(c=>c.sp===b.id&&c.target===x&&(c.type==='contra'||c.type==='tracked'))));if(ag.length)ins.push({who:ag[0].id,text:`Agreed, ${N(x)} is suspicious.`});else for(const q of skeptics(p.id,x))ins.push({who:q.id,text:fmt(pick(ASKWHY),{T:N(x),S:p.name})});}}
+  if(!M.aiOn){const a=A[x];if(!a.human&&a.alive){if(a.imp)ins.push({who:x,text:pick([`Me? I was in ${joinRooms(M.alibi[x]||['Comms'])}. That's crazy.`,`Why me? ${p.name} is being really sus right now.`])});else ins.push({who:x,text:`It's not me, I was in ${joinRooms(M.alibi[x]||roomsIn(a,M.w0,M.w1))}.`});
+   const ag=A.filter(b=>b.alive&&!b.human&&!b.imp&&b!==a&&(b.witness.some(w=>w.killer===x)||M.claims.some(c=>c.sp===b.id&&c.target===x&&(c.type==='contra'||c.type==='tracked'))));if(ag.length)ins.push({who:ag[0].id,text:`Agreed, ${N(x)} is suspicious.`});else for(const q of skeptics(p.id,x))ins.push({who:q.id,text:fmt(pick(ASKWHY),{T:N(x),S:p.name})});}}}
  else{ins.push({who:p.id,text:`${N(x)} is clear. They were with me.`});M.claims.push({type:'vouch',sp:p.id,target:x});}
  M.lines.splice(M.shown,0,...ins);M.shown+=1;M.scroll=0;SFX.click();}
 function voteLanded(id){const M=G.M;M.voteT[id]=M.t;SND.play('vote');const left=G.agents.filter(a=>a.alive&&M.votes[a.id]===undefined).length;M.lines.splice(M.shown,0,{who:-2,vid:id,text:`${G.agents[id].name} has voted. ${left} remaining.`});M.shown++;M.scroll=0;}
@@ -1705,10 +1705,12 @@ function drawLounge(){const c=ctx,L=LAND(),m=LG.me;if(!LMAP)buildLoungeMap();if(
  list.sort((a,b)=>a.y-b.y).forEach(o=>o.d());c.restore();
  // ---- HUD ----
  const host=NET.role==='host',solo=!NET.role;
- const pw=L?140:Math.min(240,W-120),px=L?W-SA.r-pw-8:W-SA.r-pw-8,py=SA.t+8;rr(c,px,py,pw,L?96:72,10);c.fillStyle='rgba(12,16,28,.88)';c.fill();c.strokeStyle='#4b5874';c.lineWidth=2;c.stroke();
- if(solo){txt(c,'SOLO LOUNGE',px+pw/2,py+18,13,'#5ee0ff','center',true);txt(c,'You + 9 bots',px+pw/2,py+38,12,'#cfd8f5','center',true);}
- else{txt(c,'ROOM CODE',px+pw/2,py+14,10,'#8f9bb8','center',true);txt(c,NET.code||'…',px+pw/2,py+34,20,'#fff','center',true,3);const n=Math.min(10,NET.players.length||1);txt(c,NET.myId?n+'/10 players · bots fill the rest':(NET.status||'Connecting…'),px+pw/2,py+(L?58:56),10,'#cfd8f5','center',true);}
- const sbY=py+(L?104:80);
+ const pw=L?140:Math.min(240,W-120),px=W-SA.r-pw-8,py=SA.t+8,ph=92;rr(c,px,py,pw,ph,10);c.fillStyle='rgba(12,16,28,.88)';c.fill();c.strokeStyle='#4b5874';c.lineWidth=2;c.stroke();
+ const fitC=(str,y,size,colr,bold,strokeW)=>{const f=fitText(c,str,pw-14,size,bold?'800 ':'600 ');txt(c,f.str,px+pw/2,y,f.fs,colr,'center',bold,strokeW);};
+ if(solo){fitC('SOLO LOUNGE',py+24,13,'#5ee0ff',true);fitC('You + 9 bots',py+48,12,'#cfd8f5',true);fitC('Bots fill the empty seats',py+70,10,'#8f9bb8',false);}
+ else{fitC('ROOM CODE',py+14,10,'#8f9bb8',true);fitC(NET.code||'…',py+36,20,'#fff',true,3);const n=Math.min(10,NET.players.length||1);
+  if(NET.myId){fitC(n+'/10 players',py+60,12,'#cfd8f5',true);fitC('bots fill the rest',py+77,10,'#8f9bb8',false);}else fitC(NET.status||'Connecting…',py+66,11,'#cfd8f5',true);}
+ const sbY=py+ph+8;
  if(solo||host){bigBtn(c,px,sbY,pw,40,'START',(solo||(NET.myId&&NET.ws))?'#2f8a5a':'#444b5c',!!(solo||(NET.myId&&NET.ws)),()=>loungeStart());}
  else txt(c,NET.myId?'Waiting for the host to start…':'',px+pw/2,sbY+20,11,'#cfd8f5','center',true);
  bigBtn(c,SA.l+8,SA.t+8,86,34,'LEAVE','#7a2f3a',true,()=>{SND.play('ui');if(NET.role)netClose();LG.active=false;G={mode:'title',rt:G.rt};});
