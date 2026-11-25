@@ -286,7 +286,10 @@ function drawFurniture(c){
 // Cosmetics (original designs). The colour list starts with the 10 classic crew colours bots prefer; extra colours follow.
 const HATS=[{id:'none',name:'None'},{id:'cap',name:'Cap'},{id:'beanie',name:'Beanie'},{id:'party',name:'Party Hat'},{id:'crown',name:'Crown'},{id:'cowboy',name:'Wide Brim'},{id:'tophat',name:'Top Hat'},{id:'halo',name:'Halo'}];
 const PANTS=[{id:'none',name:'Default'},{id:'shorts',name:'Shorts'},{id:'jeans',name:'Jeans'},{id:'striped',name:'Striped'},{id:'overalls',name:'Overalls'},{id:'cargo',name:'Cargo'},{id:'plaid',name:'Plaid'}];
-const HAT_IDS=HATS.map(h=>h.id),PANT_IDS=PANTS.map(q=>q.id);
+const SHIRTS=[{id:'none',name:'None'},{id:'tee',name:'Striped Tee'},{id:'hoodie',name:'Hoodie'},{id:'jacket',name:'Zip Jacket'},{id:'sweater',name:'Sweater'},{id:'hivis',name:'Hi-Vis Vest'},{id:'labcoat',name:'Lab Coat'},{id:'suit',name:'Suit & Tie'}];
+const HAT_IDS=HATS.map(h=>h.id),PANT_IDS=PANTS.map(q=>q.id),SHIRT_IDS=SHIRTS.map(q=>q.id);
+const SHIRT_COL={tee:'#eef0f4',hoodie:'#56677f',jacket:'#3b404b',sweater:'#b4574b',hivis:'#ff8a1e',labcoat:'#f3f5f7',sleeve:{hoodie:'#4b5a70',jacket:'#30343d',sweater:'#9c4a40',labcoat:'#e2e6ea',suit:'#262a33'},suit:'#2b2f3a'};
+const shirtOk=v=>SHIRT_IDS.includes(v)?v:'none';
 const PANT_COL={shorts:'#c9a46a',jeans:'#3d5f9e',striped:'#f1f1f1',overalls:'#4a6fb0',cargo:'#6e7a45',plaid:'#a8433a'};
 let COSMAP={};// colour hex -> {hat,pants}; colours are unique within a room/game
 function drawHat(c,hat,hx,hy){if(!hat||hat==='none')return;c.save();c.lineWidth=1.5;c.strokeStyle='#121318';
@@ -304,9 +307,18 @@ function legDetail(c,pants,x0,y0,w,h,dark){if(pants==='shorts'){c.fillStyle=dark
  else if(pants==='cargo'){c.fillStyle='rgba(0,0,0,.25)';c.fillRect(x0+1.5,y0+3,w-3,3);}
  else if(pants==='jeans'){c.strokeStyle='rgba(255,255,255,.35)';c.lineWidth=0.8;c.beginPath();c.moveTo(x0+w/2,y0+1);c.lineTo(x0+w/2,y0+h-1);c.stroke();}}
 const PAL=[['Red','#d6262b'],['Blue','#2b4fd8'],['Green','#1f9440'],['Pink','#f06bc4'],['Orange','#f28a1c'],['Yellow','#efdc45'],['Purple','#7b44c9'],['Lime','#76df4e'],['Cyan','#45dccd'],['White','#e3e8f1'],['Brown','#8a5a35'],['Maroon','#7d1f3a'],['Teal','#1f8a8a'],['Coral','#ff7f6a'],['Navy','#2b3a8a'],['Mint','#9ff0c8'],['Charcoal','#3e424d'],['Tan','#d2b48c']];
+function drawShirt(c,sh,col){const k='#121318';c.lineWidth=1.2;c.strokeStyle=k;
+ if(sh==='labcoat'){c.fillStyle=SHIRT_COL.labcoat;c.fillRect(-11,-29,22,23);c.fillStyle=col;c.fillRect(-1.5,-29,3,23);c.strokeStyle='#9aa3ad';c.beginPath();c.moveTo(-1.5,-29);c.lineTo(-5,-22);c.moveTo(1.5,-29);c.lineTo(5,-22);c.moveTo(-1.5,-29);c.lineTo(-1.5,-6);c.moveTo(1.5,-29);c.lineTo(1.5,-6);c.stroke();c.strokeRect(4,-19,5,4);return;}
+ c.fillStyle=SHIRT_COL[sh]||'#ccc';c.fillRect(-11,-29,22,15);
+ if(sh==='tee'){c.fillStyle='#d2463b';c.fillRect(-11,-22,22,3);}
+ else if(sh==='hoodie'){c.strokeStyle='#3a475a';c.lineWidth=1.4;c.beginPath();c.arc(1,-29,7,0.15*Math.PI,0.85*Math.PI);c.stroke();rr(c,-6,-20,13,5,2);c.fillStyle='#4b5a70';c.fill();c.stroke();c.strokeStyle='#e8ecf2';c.lineWidth=1;c.beginPath();c.moveTo(-1,-26);c.lineTo(-1,-22);c.moveTo(3,-26);c.lineTo(3,-22);c.stroke();}
+ else if(sh==='jacket'){c.strokeStyle='#c9ced8';c.lineWidth=1;c.beginPath();c.moveTo(1,-28);c.lineTo(1,-14);c.stroke();c.fillStyle='#4a505d';c.beginPath();c.moveTo(-6,-29);c.lineTo(1,-25);c.lineTo(-3,-23);c.closePath();c.fill();c.beginPath();c.moveTo(8,-29);c.lineTo(1,-25);c.lineTo(5,-23);c.closePath();c.fill();}
+ else if(sh==='sweater'){c.fillStyle='#ecdcb4';c.fillRect(-11,-23,22,3.5);c.fillStyle='#93443b';for(let i=-11;i<11;i+=3)c.fillRect(i,-16.5,1.4,2.5);}
+ else if(sh==='hivis'){c.fillStyle='#dfe7ef';c.fillRect(-11,-20,22,2.4);c.fillRect(-7,-29,2.4,15);c.fillRect(5,-29,2.4,15);}
+ else if(sh==='suit'){c.fillStyle='#f2f2f2';c.beginPath();c.moveTo(-3,-29);c.lineTo(5,-29);c.lineTo(1,-20);c.closePath();c.fill();c.fillStyle='#c0303a';c.beginPath();c.moveTo(0,-27);c.lineTo(2,-27);c.lineTo(2.6,-19);c.lineTo(1,-17);c.lineTo(-0.6,-19);c.closePath();c.fill();c.fillStyle='#d8d8d8';circ(c,1,-16,0.9);c.fill();}}
 function drawSpacer(c,x,y,col,face,phase,moving,alpha,ghost,cosOv){
  c.save();c.translate(x,y);if(face<0)c.scale(-1,1);c.globalAlpha=alpha==null?1:alpha;
- const dark=shade(col,-0.38),lite=shade(col,0.35);const cs=cosOv||COSMAP[col]||null;const pants=cs&&cs.pants&&cs.pants!=='none'?cs.pants:null,hat=cs&&cs.hat&&cs.hat!=='none'?cs.hat:null;const pc=pants?PANT_COL[pants]:null;
+ const dark=shade(col,-0.38),lite=shade(col,0.35);const cs=cosOv||COSMAP[col]||null;const pants=cs&&cs.pants&&cs.pants!=='none'?cs.pants:null,hat=cs&&cs.hat&&cs.hat!=='none'?cs.hat:null,shirt=cs&&cs.shirt&&cs.shirt!=='none'&&SHIRT_IDS.includes(cs.shirt)?cs.shirt:null;const pc=pants?PANT_COL[pants]:null;
  const bob=moving?-Math.abs(Math.sin(phase))*2.4:Math.sin(phase*0.35)*0.9;
  if(!ghost){c.fillStyle='rgba(0,0,0,.3)';c.beginPath();c.ellipse(0,0,13,4.5,0,0,TAU);c.fill();
   const s=moving?Math.sin(phase):0;
@@ -314,10 +326,10 @@ function drawSpacer(c,x,y,col,face,phase,moving,alpha,ghost,cosOv){
  c.translate(0,bob);
  if(ghost){c.beginPath();c.moveTo(-11,-14);for(let i=0;i<=4;i++){c.lineTo(-11+i*5.5,-6+(i%2?4:0)+Math.sin(phase+i)*1.5);}c.lineTo(11,-14);c.closePath();c.fillStyle=col;c.fill();}
  // arm stub (back)
- rr(c,-15,-25,6,12,3);c.fillStyle=dark;c.fill();c.strokeStyle='#121318';c.lineWidth=1.6;c.stroke();
+ rr(c,-15,-25,6,12,3);c.fillStyle=shirt&&SHIRT_COL.sleeve[shirt]?SHIRT_COL.sleeve[shirt]:dark;c.fill();c.strokeStyle='#121318';c.lineWidth=1.6;c.stroke();
  // torso
- rr(c,-11,-29,22,21,7);c.fillStyle=col;c.fill();c.save();c.clip();c.fillStyle=pc||dark;c.fillRect(-11,-14,22,8);if(pants){legDetail(c,pants,-11,-14,22,8,dark);if(pants==='overalls'){c.fillStyle=pc;c.fillRect(-6,-24,12,10);c.strokeStyle='#2a3d66';c.lineWidth=1.6;c.beginPath();c.moveTo(-5,-24);c.lineTo(-8,-29);c.moveTo(5,-24);c.lineTo(8,-29);c.stroke();c.fillStyle='#e8d36a';circ(c,-4,-22,1.2);c.fill();circ(c,4,-22,1.2);c.fill();}}c.fillStyle='rgba(255,255,255,.18)';c.fillRect(-9,-28,5,12);c.restore();c.strokeStyle='#121318';c.lineWidth=2;rr(c,-11,-29,22,21,7);c.stroke();
- c.fillStyle='#ffe36b';c.fillRect(2,-23,6,4);c.fillStyle='#2a2d36';c.fillRect(-11,-15,22,2.5);
+ rr(c,-11,-29,22,21,7);c.fillStyle=col;c.fill();c.save();c.clip();if(shirt)drawShirt(c,shirt,col);c.fillStyle=pc||dark;if(shirt!=='labcoat'||pants)c.fillRect(-11,-14,22,8);else c.fillRect(-1.5,-14,3,8);if(pants){legDetail(c,pants,-11,-14,22,8,dark);if(pants==='overalls'){c.fillStyle=pc;c.fillRect(-6,-24,12,10);c.strokeStyle='#2a3d66';c.lineWidth=1.6;c.beginPath();c.moveTo(-5,-24);c.lineTo(-8,-29);c.moveTo(5,-24);c.lineTo(8,-29);c.stroke();c.fillStyle='#e8d36a';circ(c,-4,-22,1.2);c.fill();circ(c,4,-22,1.2);c.fill();}}c.fillStyle='rgba(255,255,255,.18)';c.fillRect(-9,-28,5,12);c.restore();c.strokeStyle='#121318';c.lineWidth=2;rr(c,-11,-29,22,21,7);c.stroke();
+ if(!shirt){c.fillStyle='#ffe36b';c.fillRect(2,-23,6,4);}c.fillStyle='#2a2d36';c.fillRect(-11,-15,22,2.5);
  // helmet
  c.beginPath();c.arc(1,-38,11.5,0,TAU);c.fillStyle=col;c.fill();c.strokeStyle='#121318';c.lineWidth=2;c.stroke();
  c.beginPath();c.arc(1,-38,11.5,Math.PI*0.6,Math.PI*1.15);c.strokeStyle=dark;c.lineWidth=3;c.stroke();
@@ -410,7 +422,7 @@ function newGame(opt){
  const usedC=new Set(),cols=[];for(let i=0;i<10;i++){const sc=slotCos[i];if(sc&&sc.colIdx!=null&&PAL[sc.colIdx]&&!usedC.has(sc.colIdx)){cols[i]=sc.colIdx;usedC.add(sc.colIdx);}}
  const freeC=shuffle([...Array(10).keys()].filter(i=>!usedC.has(i))).concat(shuffle([...Array(PAL.length).keys()].filter(i=>i>=10&&!usedC.has(i))));
  for(let i=0;i<10;i++)if(cols[i]==null)cols[i]=freeC.shift();
- COSMAP={};for(let i=0;i<10;i++){const sc=slotCos[i];COSMAP[PAL[cols[i]][1]]={hat:sc&&HAT_IDS.includes(sc.hat)?sc.hat:'none',pants:sc&&PANT_IDS.includes(sc.pants)?sc.pants:'none'};}
+ COSMAP={};for(let i=0;i<10;i++){const sc=slotCos[i];COSMAP[PAL[cols[i]][1]]={hat:sc&&HAT_IDS.includes(sc.hat)?sc.hat:'none',pants:sc&&PANT_IDS.includes(sc.pants)?sc.pants:'none',shirt:sc?shirtOk(sc.shirt):(Math.random()<0.45?pick(SHIRT_IDS.slice(1)):'none')};}
  G={mode:'reveal',rt:G.rt||0,revealT:0,t:0,round:0,agents:[],bodies:[],deaths:[],killCD:KILL_CD,sabCD:85,sab:null,M:null,buttonUsed:false,buttonCD:CFG.emergCD,mg:null,fx:[],cam:{x:BELL.x,y:BELL.y},flash:0,deathFx:null,lastMeetT:0,tasksDone:0,tasksShown:0,tasksTotal:0,mapOpen:false,tasksOpen:taskPanelPref(),alarmT:0,toast:null,end:null,pKillCD:KILL_CD,pAbCD:10,ptrack:null,ptrackT:0,sabMenu:false,shots:[],abT:null,voteT:{},social:{meetings:[],ejected:[]},aiStatus:'off',
   playerImp:opt.imp!=null?opt.imp:Math.random()<Math.min(0.9,nImp/6)};
  for(let i=0;i<10;i++){const [name,col]=PAL[cols[i]];const a={id:i,name,col,x:0,y:0,face:1,walk:Math.random()*6,moving:false,alive:true,imp:false,isPlayer:i===0,human:i===0,kcd:KILL_CD,padHold:-1,in:null,ptrack:null,ptrackT:0,typing:false,path:[],tasks:[],cur:null,wait:0,trail:[],snaps:[],witness:[],lunge:0,lx:0,ly:0,sabJob:null,sabWork:0,reportBody:null,selfRep:null,state:'normal',target:null,scanT:Math.random(),repathT:0,huntT:0,sightT:Math.random()*0.35,trailT:0,vis:null,visT:0,visual:[],ventSaw:[],inVent:null,role:null,abCD:10,shieldT:0,trackId:null,trackT:0,trackLog:[],vitalsKnown:[],vitalsAlert:null,bellUsed:false,meetingsLeft:CFG.meetings,engPlan:null,ventHold:0,ventT:0,claimEng:false,posHist:[],aiVote:null,wantBell:null};G.agents.push(a);}
@@ -1333,7 +1345,7 @@ function showClosed(msg){netClose();closeMG();resetJoy();G={mode:'closed',rt:G.r
 const NET_ERR={invalid_message:'The relay rejected a message.',invalid_json:'The relay could not read a message.',send_hello_first:'Handshake problem; please rejoin.',host_already_connected:'That room code already has a host. Pick another code.',unsupported_host_message:'Unsupported host message.',unsupported_player_message:'Unsupported player message.',rate_limited:'Sending too fast; slowing down.',server_error:'Relay server error.'};
 function onNet(m){switch(m.type){
  case 'welcome':NET.myId=m.clientId;{const h={type:'hello',role:NET.role,name:NET.name};if(NET.role==='host'&&NET.hostToken)h.hostToken=NET.hostToken;rawSend(h);}break;
- case 'joined':NET.myId=m.clientId;if(m.hostToken)NET.hostToken=m.hostToken;NET.players=Array.isArray(m.players)?m.players:[];NET.status='';NET.retries=0;if(LG.me&&G.mode==='lobby'){const idx=Math.max(0,NET.players.findIndex(q=>q.clientId===NET.myId));loungeSeat(LG.me,idx);}if(NET.role==='player'){LG.pendingT=1.5;LG.pendingCol=LG.me?LG.me.colIdx:null;act({a:'cos',c:LG.me?LG.me.colIdx:0,h:LG.me?LG.me.hat:'none',p:LG.me?LG.me.pants:'none'});}if(!m.isHost&&NET.role==='host'){showClosed('Could not become host of this room.');}break;
+ case 'joined':NET.myId=m.clientId;if(m.hostToken)NET.hostToken=m.hostToken;NET.players=Array.isArray(m.players)?m.players:[];NET.status='';NET.retries=0;if(LG.me&&G.mode==='lobby'){const idx=Math.max(0,NET.players.findIndex(q=>q.clientId===NET.myId));loungeSeat(LG.me,idx);}if(NET.role==='player'){LG.pendingT=1.5;LG.pendingCol=LG.me?LG.me.colIdx:null;act({a:'cos',c:LG.me?LG.me.colIdx:0,h:LG.me?LG.me.hat:'none',p:LG.me?LG.me.pants:'none',s:LG.me?(LG.me.shirt||'none'):'none'});}if(!m.isHost&&NET.role==='host'){showClosed('Could not become host of this room.');}break;
  case 'player_joined':NET.players=Array.isArray(m.players)?m.players:NET.players;if(NET.role==='host'&&m.player)sendTo(m.player.clientId,{k:'cfg',cfg:CFG});if(isHost()&&NET.inGame&&m.player)sendTo(m.player.clientId,{k:'busy'});break;
  case 'player_left':NET.players=Array.isArray(m.players)?m.players:NET.players;if(LG.others&&m.clientId)delete LG.others[m.clientId];if(isHost()&&NET.inGame)seatLeft(m.clientId);break;
  case 'room_closed':showClosed(m.reason==='host_left'?'Host left, room closed.':'The room was closed.');break;
@@ -1344,8 +1356,8 @@ function netTick(dt){if(!NET.ws)return;NET.pingT+=dt;if(NET.pingT>20){NET.pingT=
  if(NET.role==='host'&&NET.inGame&&G.agents){NET.snapT+=dt;if(NET.snapT>=0.1){NET.snapT=0;const base=buildSnap();for(const h of G.agents)if(h.remote)netSend({type:'snapshot',to:h.remote,data:filterSnap(base,h)});}
   NET.privT+=dt;if(NET.privT>=0.5){NET.privT=0;for(const a of G.agents)if(a.remote)sendPriv(a);}}}
 // ---------- host side ----------
-function hostStart(opts){const humans=NET.players.filter(q=>!q.isHost&&q.clientId!==NET.myId).slice(0,9).map(q=>{const o=LG.others&&LG.others[q.clientId];return Object.assign({},q,{cos:o?{colIdx:o.colIdx,hat:o.hat,pants:o.pants}:null});});newGame(Object.assign({mp:humans,name:NET.name,myCos:LG.me?{colIdx:LG.me.colIdx,hat:LG.me.hat,pants:LG.me.pants}:null},opts||{}));LG.active=false;NET.inGame=true;
- netSend({type:'event',data:{k:'start',cfg:CFG,agents:G.agents.map(a=>[a.id,a.name,a.col,a.remote||(a.isPlayer?NET.myId:null),(COSMAP[a.col]||{}).hat||'none',(COSMAP[a.col]||{}).pants||'none'])}});
+function hostStart(opts){const humans=NET.players.filter(q=>!q.isHost&&q.clientId!==NET.myId).slice(0,9).map(q=>{const o=LG.others&&LG.others[q.clientId];return Object.assign({},q,{cos:o?{colIdx:o.colIdx,hat:o.hat,pants:o.pants,shirt:o.shirt}:null});});newGame(Object.assign({mp:humans,name:NET.name,myCos:LG.me?{colIdx:LG.me.colIdx,hat:LG.me.hat,pants:LG.me.pants,shirt:LG.me.shirt}:null},opts||{}));LG.active=false;NET.inGame=true;
+ netSend({type:'event',data:{k:'start',cfg:CFG,agents:G.agents.map(a=>[a.id,a.name,a.col,a.remote||(a.isPlayer?NET.myId:null),(COSMAP[a.col]||{}).hat||'none',(COSMAP[a.col]||{}).pants||'none',(COSMAP[a.col]||{}).shirt||'none'])}});
  for(const a of G.agents)if(a.remote)sendPriv(a);
  NET.players.filter(q=>!q.isHost&&q.clientId!==NET.myId).slice(9).forEach(q=>sendTo(q.clientId,{k:'full'}));}
 function hostToLobby(){NET.inGame=false;netSend({type:'event',data:{k:'lobby'}});G={mode:'lobby',rt:G.rt||0};loungeReturn();}
@@ -1423,7 +1435,7 @@ function clientRecv(m){const d=(m.data&&typeof m.data==='object')?m.data:{};
   case 'full':G={mode:'lobby',rt:G.rt||0,full:1};if(!LG.me)loungeReturn();break;}}
 function clientStart(d){if(d.cfg){CFG=clampCfg(d.cfg);}applyCfg();const ag=Array.isArray(d.agents)?d.agents:[];if(!ag.some(r=>r[3]===NET.myId)){G={mode:'lobby',rt:G.rt||0,full:1};return;}closeMG();resetJoy();
  G={mode:'reveal',rt:G.rt||0,revealT:0,t:0,agents:[],bodies:[],deaths:[],killCD:1e9,pKillCD:KILL_CD,pAbCD:10,sabCD:999,sab:null,M:null,buttonUsed:false,buttonCD:15,mg:null,fx:[],cam:{x:BELL.x,y:BELL.y},flash:0,deathFx:null,lastMeetT:0,tasksDone:0,tasksTotal:1,mapOpen:false,tasksOpen:true,alarmT:0,toast:null,end:null,shots:[],abT:null,killT:null,voteT:{},ptrack:null,sabMenu:false,engCount:0,roleList:[],playerImp:false};
- COSMAP={};for(const r of ag){if(/^#[0-9a-f]{6}$/i.test(r[2]))COSMAP[r[2]]={hat:HAT_IDS.includes(r[4])?r[4]:'none',pants:PANT_IDS.includes(r[5])?r[5]:'none'};}
+ COSMAP={};for(const r of ag){if(/^#[0-9a-f]{6}$/i.test(r[2]))COSMAP[r[2]]={hat:HAT_IDS.includes(r[4])?r[4]:'none',pants:PANT_IDS.includes(r[5])?r[5]:'none',shirt:shirtOk(r[6])};}
  for(const r of ag){const [id,name,col,cid]=r;G.agents[id]={id,name:String(name).slice(0,14),col:/^#[0-9a-f]{6}$/i.test(col)?col:'#cccccc',x:BELL.x,y:BELL.y,tx:BELL.x,ty:BELL.y,face:1,walk:Math.random()*6,moving:false,alive:true,imp:false,isPlayer:cid===NET.myId,remote:cid||null,human:!!cid,inVent:null,vis:null,lunge:0,shieldT:0,role:null,tasks:[],trail:[],snaps:[],witness:[],visual:[],ventSaw:[],claimEng:false,ventT:0};}
  G.player=G.agents.find(a=>a&&a.isPlayer);NET.lastVis=null;NET.typing=false;}
 function applyPriv(d){if(!G.agents||!G.player)return;const p=G.player;p.imp=!!d.imp;G.playerImp=p.imp;p.role=d.role||null;
@@ -1700,42 +1712,42 @@ const LOBST=[{x:60,y:112,w:34,h:250},{x:546,y:112,w:34,h:250},{x:168,y:84,w:84,h
 const LSEATS=[...Array(10)].map((_,i)=>i<5?{x:77,y:136+i*50,fx:116,face:1}:{x:563,y:136+(i-5)*50,fx:524,face:-1});
 const LSTATIONS=[{id:'settings',x:210,y:116,label:'GAME SETTINGS'},{id:'wardrobe',x:434,y:116,label:'WARDROBE'}];
 let LG={active:false,me:null,others:{},bots:[],wardrobe:false,tab:0};let LMAP=null;
-function loadCos(){try{const o=JSON.parse(localStorage.getItem('kestrel_cos')||'{}');return{colIdx:Number.isInteger(o.c)&&PAL[o.c]?o.c:null,hat:HAT_IDS.includes(o.h)?o.h:'none',pants:PANT_IDS.includes(o.p)?o.p:'none'};}catch(_){return{colIdx:null,hat:'none',pants:'none'};}}
-function saveCos(){try{const m=LG.me;localStorage.setItem('kestrel_cos',JSON.stringify({c:m.colIdx,h:m.hat,p:m.pants}));}catch(_){}}
+function loadCos(){try{const o=JSON.parse(localStorage.getItem('kestrel_cos')||'{}');return{colIdx:Number.isInteger(o.c)&&PAL[o.c]?o.c:null,hat:HAT_IDS.includes(o.h)?o.h:'none',pants:PANT_IDS.includes(o.p)?o.p:'none',shirt:shirtOk(o.s)};}catch(_){return{colIdx:null,hat:'none',pants:'none',shirt:'none'};}}
+function saveCos(){try{const m=LG.me;localStorage.setItem('kestrel_cos',JSON.stringify({c:m.colIdx,h:m.hat,p:m.pants,s:m.shirt}));}catch(_){}}
 function lcanStand(x,y,r){if(x-r<LFLOOR.x||x+r>LFLOOR.x+LFLOOR.w||y-6<LFLOOR.y||y>LFLOOR.y+LFLOOR.h-4)return false;for(const o of LOBST)if(x+r>o.x&&x-r<o.x+o.w&&y+2>o.y&&y-8<o.y+o.h)return false;return true;}
 function loungeSeat(p,i){const st=LSEATS[i%10];p.x=st.fx;p.y=st.y+8;p.face=st.face;p.seat=i%10;p.spawnT=1.1;p.moving=false;}
 function loungeTaken(exceptMe){const t=new Set();for(const k in LG.others)t.add(LG.others[k].colIdx);for(const b of LG.bots)t.add(b.colIdx);if(!exceptMe&&LG.me)t.add(LG.me.colIdx);return t;}
 function firstFree(pref,taken){if(pref!=null&&PAL[pref]&&!taken.has(pref))return pref;for(let k=0;k<PAL.length;k++){const i=((pref==null?0:pref)+k)%PAL.length;if(!taken.has(i))return i;}return 0;}
 function enterLounge(opts){opts=opts||{};const cs=loadCos();
- LG={active:true,solo:!!opts.solo,me:{name:opts.solo?'You':cleanName(NET.name||'You'),colIdx:cs.colIdx,hat:cs.hat,pants:cs.pants,walk:0,face:1,moving:false},others:{},bots:[],wardrobe:false,tab:0,sendT:0,snapT:0,near:null,toast:null,pendingT:0};
+ LG={active:true,solo:!!opts.solo,me:{name:opts.solo?'You':cleanName(NET.name||'You'),colIdx:cs.colIdx,hat:cs.hat,pants:cs.pants,shirt:cs.shirt,walk:0,face:1,moving:false},others:{},bots:[],wardrobe:false,tab:0,sendT:0,snapT:0,near:null,toast:null,pendingT:0};
  if(LG.me.colIdx==null)LG.me.colIdx=randi(0,9);
  loungeSeat(LG.me,0);
  if(LG.solo){const taken=new Set([LG.me.colIdx]);const base=shuffle([...Array(10).keys()].filter(i=>!taken.has(i))).concat(shuffle([...Array(PAL.length).keys()].filter(i=>i>=10&&!taken.has(i))));
-  for(let i=1;i<10;i++){const ci=base.shift();const b={colIdx:ci,name:PAL[ci][0],hat:Math.random()<0.4?pick(HAT_IDS.slice(1)):'none',pants:Math.random()<0.3?pick(PANT_IDS.slice(1)):'none',walk:Math.random()*6,face:1,moving:false,wait:rand(1.5,6),seated:Math.random()<0.45};loungeSeat(b,i);b.spawnT=1.1+i*0.12;LG.bots.push(b);}}
+  for(let i=1;i<10;i++){const ci=base.shift();const b={colIdx:ci,name:PAL[ci][0],hat:Math.random()<0.4?pick(HAT_IDS.slice(1)):'none',pants:Math.random()<0.3?pick(PANT_IDS.slice(1)):'none',shirt:Math.random()<0.45?pick(SHIRT_IDS.slice(1)):'none',walk:Math.random()*6,face:1,moving:false,wait:rand(1.5,6),seated:Math.random()<0.45};loungeSeat(b,i);b.spawnT=1.1+i*0.12;LG.bots.push(b);}}
  G={mode:'lobby',rt:G.rt||0};}
 function loungeReturn(){if(!LG.me){enterLounge({solo:!NET.role});return;}LG.active=true;LG.wardrobe=false;const idx=NET.role?Math.max(0,NET.players.findIndex(q=>q.clientId===NET.myId)):0;loungeSeat(LG.me,idx);LG.bots.forEach((b,i)=>loungeSeat(b,i+1));}
 function setMyCos(ch){const m=LG.me;if(!m)return;
  if(ch.colIdx!=null){const taken=loungeTaken(true);if(taken.has(ch.colIdx)){LG.toast={t:2,text:PAL[ch.colIdx][0]+' is taken'};SND.play('ui');return;}m.colIdx=ch.colIdx;LG.pendingT=1.5;LG.pendingCol=ch.colIdx;}
- if(ch.hat&&HAT_IDS.includes(ch.hat))m.hat=ch.hat;if(ch.pants&&PANT_IDS.includes(ch.pants))m.pants=ch.pants;saveCos();SND.play('ui');
- if(isClient())act({a:'cos',c:m.colIdx,h:m.hat,p:m.pants});}
+ if(ch.hat&&HAT_IDS.includes(ch.hat))m.hat=ch.hat;if(ch.pants&&PANT_IDS.includes(ch.pants))m.pants=ch.pants;if(ch.shirt&&SHIRT_IDS.includes(ch.shirt))m.shirt=ch.shirt;saveCos();SND.play('ui');
+ if(isClient())act({a:'cos',c:m.colIdx,h:m.hat,p:m.pants,s:m.shirt||'none'});}
 function loungeUse(){const n=LG.near;if(!n||LG.wardrobe||(LG.me&&LG.me.spawnT>0))return;resetJoy();SND.play('ui');
  if(n.id==='wardrobe'){LG.wardrobe=true;LG.tab=0;}else openSettings('lobby',isClient());}
-function loungeStart(){SND.play('start');if(LG.solo||!NET.role){const m=LG.me;newGame({myCos:{colIdx:m.colIdx,hat:m.hat,pants:m.pants},botCos:LG.bots.map(b=>({colIdx:b.colIdx,hat:b.hat,pants:b.pants}))});LG.active=false;return;}if(isHost())hostStart();}
+function loungeStart(){SND.play('start');if(LG.solo||!NET.role){const m=LG.me;newGame({myCos:{colIdx:m.colIdx,hat:m.hat,pants:m.pants,shirt:m.shirt},botCos:LG.bots.map(b=>({colIdx:b.colIdx,hat:b.hat,pants:b.pants,shirt:b.shirt}))});LG.active=false;return;}if(isHost())hostStart();}
 // ---- host side ----
 function loungeHostRecv(m){const cid=m.from;if(!cid||cid===NET.myId||m.type==='snapshot')return;const d=(m.data&&typeof m.data==='object')?m.data:{};let o=LG.others[cid];
  if(!o){const pl=NET.players.find(q=>q.clientId===cid);if(!pl)return;o=loungeAddPlayer(cid,pl.name,null);}
  if(m.type==='input'&&d.lx!=null){o.tx=clamp(+d.lx||0,0,LW);o.ty=clamp(+d.ly||0,0,LH);o.face=d.f<0?-1:1;o.moving=!!d.m;o.seen=1;}
- if(m.type==='event'&&d.a==='cos'){const t=new Set([LG.me.colIdx]);for(const k in LG.others)if(k!==cid)t.add(LG.others[k].colIdx);if(d.c!=null)o.colIdx=firstFree(d.c|0,t);if(HAT_IDS.includes(d.h))o.hat=d.h;if(PANT_IDS.includes(d.p))o.pants=d.p;}}
+ if(m.type==='event'&&d.a==='cos'){const t=new Set([LG.me.colIdx]);for(const k in LG.others)if(k!==cid)t.add(LG.others[k].colIdx);if(d.c!=null)o.colIdx=firstFree(d.c|0,t);if(HAT_IDS.includes(d.h))o.hat=d.h;if(PANT_IDS.includes(d.p))o.pants=d.p;if(SHIRT_IDS.includes(d.s))o.shirt=d.s;}}
 function loungeAddPlayer(cid,name,pref){const t=new Set([LG.me.colIdx]);for(const k in LG.others)t.add(LG.others[k].colIdx);const idx=Math.max(1,NET.players.findIndex(q=>q.clientId===cid));const st=LSEATS[idx%10];
  return LG.others[cid]={name:cleanName(name),x:st.fx,y:st.y+8,tx:st.fx,ty:st.y+8,face:st.face,moving:false,walk:Math.random()*6,colIdx:firstFree(pref,t),hat:'none',pants:'none'};}
 function loungeSnap(){if(LG.others[NET.myId])delete LG.others[NET.myId];const used=new Set(),uname=n=>{let b=cleanName(n),x=b,k=2;while(used.has(x.toLowerCase()))x=b+k++;used.add(x.toLowerCase());return x;};const rows=[];const m=LG.me;
- rows.push([NET.myId,uname(NET.name),Math.round(m.x),Math.round(m.y),m.face,m.moving?1:0,m.colIdx,m.hat,m.pants]);
- for(const q of NET.players){if(q.clientId===NET.myId)continue;let o=LG.others[q.clientId];if(!o)o=loungeAddPlayer(q.clientId,q.name,null);rows.push([q.clientId,uname(q.name),Math.round(o.tx),Math.round(o.ty),o.face,o.moving?1:0,o.colIdx,o.hat,o.pants]);}
+ rows.push([NET.myId,uname(NET.name),Math.round(m.x),Math.round(m.y),m.face,m.moving?1:0,m.colIdx,m.hat,m.pants,m.shirt||'none']);
+ for(const q of NET.players){if(q.clientId===NET.myId)continue;let o=LG.others[q.clientId];if(!o)o=loungeAddPlayer(q.clientId,q.name,null);rows.push([q.clientId,uname(q.name),Math.round(o.tx),Math.round(o.ty),o.face,o.moving?1:0,o.colIdx,o.hat,o.pants,o.shirt||'none']);}
  return{k:'lob',p:rows};}
 // ---- client side ----
-function applyLob(d){if(!LG.me)return;const seen=new Set();for(const r of (Array.isArray(d.p)?d.p:[])){if(!Array.isArray(r))continue;const [cid,name,x,y,f,mv,ci,h,pn]=r;const colIdx=PAL[ci]?ci:0;
+function applyLob(d){if(!LG.me)return;const seen=new Set();for(const r of (Array.isArray(d.p)?d.p:[])){if(!Array.isArray(r))continue;const [cid,name,x,y,f,mv,ci,h,pn,sh]=r;const colIdx=PAL[ci]?ci:0;
   if(cid===NET.myId){LG.me.name=String(name).slice(0,14);if(LG.pendingT<=0&&colIdx!==LG.me.colIdx){const req=LG.pendingCol;LG.me.colIdx=colIdx;saveCos();if(req!=null&&req!==colIdx)LG.toast={t:2.5,text:PAL[req][0]+' was taken, you are '+PAL[colIdx][0]};}continue;}
-  seen.add(cid);let o=LG.others[cid];if(!o)o=LG.others[cid]={x,y,walk:Math.random()*6};Object.assign(o,{name:String(name).slice(0,14),tx:x,ty:y,face:f<0?-1:1,moving:!!mv,colIdx,hat:HAT_IDS.includes(h)?h:'none',pants:PANT_IDS.includes(pn)?pn:'none'});}
+  seen.add(cid);let o=LG.others[cid];if(!o)o=LG.others[cid]={x,y,walk:Math.random()*6};Object.assign(o,{name:String(name).slice(0,14),tx:x,ty:y,face:f<0?-1:1,moving:!!mv,colIdx,hat:HAT_IDS.includes(h)?h:'none',pants:PANT_IDS.includes(pn)?pn:'none',shirt:shirtOk(sh)});}
  for(const k in LG.others)if(!seen.has(k))delete LG.others[k];}
 // ---- update ----
 function loungeUpdate(dt){G.rt+=dt;const m=LG.me;if(!m)return;if(LG.toast){LG.toast.t-=dt;if(LG.toast.t<=0)LG.toast=null;}if(LG.pendingT>0)LG.pendingT-=dt;
@@ -1777,7 +1789,7 @@ function drawLounge(){const c=ctx,L=LAND(),m=LG.me;if(!LMAP)buildLoungeMap();if(
  // station highlight
  const pulse=0.5+0.5*Math.sin(G.rt*5);for(const st of LSTATIONS){const near=LG.near===st;const tx=st.id==='settings'?210:434;c.strokeStyle=near?`rgba(255,255,255,${0.6+0.4*pulse})`:`rgba(255,230,80,${0.25+0.3*pulse})`;c.lineWidth=near?3:2;rr(c,tx-46,st.id==='settings'?80:68,92,st.id==='settings'?36:48,8);c.stroke();txt(c,st.id==='settings'?'SETTINGS':'WARDROBE',tx,st.id==='settings'?128:128,10,near?'#fff':'#ffe066','center',true,3);}
  // actors
- COSMAP={};const list=[];const add=(p,name,isMe)=>{const col=PAL[p.colIdx][1];COSMAP[col]={hat:p.hat,pants:p.pants};list.push({y:p.y,d:()=>{if(p.spawnT>0){const a=Math.min(1,p.spawnT/1.1);c.fillStyle=`rgba(255,255,255,${0.55*a})`;c.beginPath();c.ellipse(p.x,p.y-24,20+10*(1-a),34,0,0,TAU);c.fill();}
+ COSMAP={};const list=[];const add=(p,name,isMe)=>{const col=PAL[p.colIdx][1];COSMAP[col]={hat:p.hat,pants:p.pants,shirt:p.shirt||'none'};list.push({y:p.y,d:()=>{if(p.spawnT>0){const a=Math.min(1,p.spawnT/1.1);c.fillStyle=`rgba(255,255,255,${0.55*a})`;c.beginPath();c.ellipse(p.x,p.y-24,20+10*(1-a),34,0,0,TAU);c.fill();}
    drawSpacer(c,p.x,p.y,col,p.face,p.walk,p.moving,p.spawnT>0?Math.max(0.35,1-p.spawnT):1);c.font='700 10px system-ui,sans-serif';c.textAlign='center';c.textBaseline='middle';c.lineWidth=3;c.strokeStyle='rgba(0,0,0,.85)';c.strokeText(name,p.x,p.y-66);c.fillStyle=isMe?'#fff':'#dfe6f2';c.fillText(name,p.x,p.y-66);}});};
  add(m,NET.role?(m.name||NET.name):'You',true);for(const k in LG.others)add(LG.others[k],LG.others[k].name,false);for(const b of LG.bots)add(b,b.name,false);
  list.sort((a,b)=>a.y-b.y).forEach(o=>o.d());c.restore();
@@ -1803,10 +1815,10 @@ function drawLounge(){const c=ctx,L=LAND(),m=LG.me;if(!LMAP)buildLoungeMap();if(
 function drawWardrobe(){const c=ctx,L=LAND(),m=LG.me;c.fillStyle='rgba(0,0,0,.6)';c.fillRect(0,0,W,H);UI.hits.length=0;
  const P={x:SA.l+12,y:SA.t+12,w:W-SA.l-SA.r-24,h:H-SA.t-SA.b-24};rr(c,P.x,P.y,P.w,P.h,16);c.fillStyle='#161d33';c.fill();c.strokeStyle='#5a6a9c';c.lineWidth=3;c.stroke();
  const pvW=L?Math.min(220,P.w*0.32):P.w,pvH=L?P.h:Math.min(230,P.h*0.34);const pv={x:P.x+10,y:P.y+10,w:pvW-20,h:pvH-20};rr(c,pv.x,pv.y,pv.w,pv.h,12);c.fillStyle='#0d1222';c.fill();
- const col=PAL[m.colIdx][1];const sc=Math.min(pv.w/40,pv.h/85)*0.9;c.save();c.translate(pv.x+pv.w/2,pv.y+pv.h*0.82);c.scale(sc,sc);c.fillStyle='rgba(120,200,255,.15)';c.beginPath();c.ellipse(0,0,22,6,0,0,TAU);c.fill();drawSpacer(c,0,0,col,1,G.rt*2,false,1,false,{hat:m.hat,pants:m.pants});c.restore();
- txt(c,PAL[m.colIdx][0]+(m.hat!=='none'?' · '+HATS.find(h=>h.id===m.hat).name:'')+(m.pants!=='none'?' · '+PANTS.find(q=>q.id===m.pants).name:''),pv.x+pv.w/2,pv.y+16,12,'#cfe0ff','center',true);
+ const col=PAL[m.colIdx][1];const sc=Math.min(pv.w/40,pv.h/85)*0.9;c.save();c.translate(pv.x+pv.w/2,pv.y+pv.h*0.82);c.scale(sc,sc);c.fillStyle='rgba(120,200,255,.15)';c.beginPath();c.ellipse(0,0,22,6,0,0,TAU);c.fill();drawSpacer(c,0,0,col,1,G.rt*2,false,1,false,{hat:m.hat,pants:m.pants,shirt:m.shirt});c.restore();
+ {const lbl=PAL[m.colIdx][0]+(m.hat!=='none'?' · '+HATS.find(h=>h.id===m.hat).name:'')+(m.shirt&&m.shirt!=='none'?' · '+SHIRTS.find(q=>q.id===m.shirt).name:'')+(m.pants!=='none'?' · '+PANTS.find(q=>q.id===m.pants).name:'');const f=fitText(c,lbl,pv.w-12,12,'800 ');txt(c,f.str,pv.x+pv.w/2,pv.y+16,f.fs,'#cfe0ff','center',true);}
  const R0={x:L?P.x+pvW:P.x+10,y:L?P.y+10:P.y+pvH,w:L?P.w-pvW-10:P.w-20,h:L?P.h-20:P.h-pvH-10};
- const tabs=['COLOR','HAT','PANTS'];const tw=Math.min(120,(R0.w-60)/3);tabs.forEach((t,i)=>{const x=R0.x+i*(tw+6);rr(c,x,R0.y,tw,34,8);c.fillStyle=LG.tab===i?'#3a6fd8':'#2b3a66';c.fill();txt(c,t,x+tw/2,R0.y+17,13,'#fff','center',true);addHit(x,R0.y,tw,34,()=>{LG.tab=i;SND.play('ui');});});
+ const tabs=['COLOR','HAT','SHIRT','PANTS'];const tw=Math.min(110,(R0.w-60)/4);tabs.forEach((t,i)=>{const x=R0.x+i*(tw+6);rr(c,x,R0.y,tw,34,8);c.fillStyle=LG.tab===i?'#3a6fd8':'#2b3a66';c.fill();{const f=fitText(c,t,tw-8,13,'800 ');txt(c,f.str,x+tw/2,R0.y+17,f.fs,'#fff','center',true);}addHit(x,R0.y,tw,34,()=>{LG.tab=i;SND.play('ui');});});
  const cx=R0.x+R0.w-22,cy=R0.y+17;c.fillStyle='#c33';circ(c,cx,cy,17);c.fill();c.strokeStyle='#fff';c.lineWidth=3;c.beginPath();c.moveTo(cx-6,cy-6);c.lineTo(cx+6,cy+6);c.moveTo(cx+6,cy-6);c.lineTo(cx-6,cy+6);c.stroke();addHit(cx-22,cy-22,44,44,()=>{LG.wardrobe=false;SND.play('ui');});
  const gy=R0.y+44,gh=R0.h-44;
  if(LG.tab===0){const taken=loungeTaken(true);const n=PAL.length,cols=L?6:6,rows=Math.ceil(n/cols),cell=Math.min((R0.w-(cols-1)*8)/cols,(gh-(rows-1)*8)/rows);
@@ -1814,10 +1826,10 @@ function drawWardrobe(){const c=ctx,L=LAND(),m=LG.me;c.fillStyle='rgba(0,0,0,.6)
    circ(c,x+cell/2,y+cell*0.42,cell*0.28);c.fillStyle=hex;c.fill();c.strokeStyle=sel?'#fff':'#0b0e16';c.lineWidth=sel?3:2;c.stroke();txt(c,nm,x+cell/2,y+cell*0.84,Math.max(9,Math.min(11,cell*0.16)),tk?'#6d7486':'#dfe6f2','center',true);
    if(tk){c.fillStyle='rgba(10,12,20,.55)';rr(c,x,y,cell,cell,10);c.fill();c.strokeStyle='#ff5a5a';c.lineWidth=3;const q=cell*0.22;c.beginPath();c.moveTo(x+cell/2-q,y+cell*0.42-q);c.lineTo(x+cell/2+q,y+cell*0.42+q);c.moveTo(x+cell/2+q,y+cell*0.42-q);c.lineTo(x+cell/2-q,y+cell*0.42+q);c.stroke();}
    else addHit(x,y,cell,cell,()=>setMyCos({colIdx:i}));});}
- else{const list=LG.tab===1?HATS:PANTS;const n=list.length,cols=L?4:4,rows=Math.ceil(n/cols),cw=(R0.w-(cols-1)*8)/cols,chh=Math.min(cw,(gh-(rows-1)*8)/rows);
-  list.forEach((it,i)=>{const x=R0.x+(i%cols)*(cw+8),y=gy+Math.floor(i/cols)*(chh+8);const sel=(LG.tab===1?m.hat:m.pants)===it.id;rr(c,x,y,cw,chh,10);c.fillStyle=sel?'#2a3b6a':'#1b2544';c.fill();c.strokeStyle=sel?'#fff':'#2b3446';c.lineWidth=sel?3:1.5;c.stroke();
-   const cos=LG.tab===1?{hat:it.id,pants:'none'}:{hat:'none',pants:it.id};const k=Math.min(cw,chh)/(LG.tab===1?62:72);c.save();c.translate(x+cw/2,y+chh*(LG.tab===1?0.92:0.8));c.scale(k,k);if(LG.tab===1){c.beginPath();c.rect(-40,-80,80,62);c.clip();c.translate(0,22);}drawSpacer(c,0,0,col,1,0,false,1,false,cos);c.restore();
-   txt(c,it.name,x+cw/2,y+12,Math.max(9,Math.min(12,cw*0.12)),'#dfe6f2','center',true,2);addHit(x,y,cw,chh,()=>setMyCos(LG.tab===1?{hat:it.id}:{pants:it.id}));});}}
+ else{const kind=LG.tab===1?'hat':LG.tab===2?'shirt':'pants';const list=kind==='hat'?HATS:kind==='shirt'?SHIRTS:PANTS;const n=list.length,cols=L?4:4,rows=Math.ceil(n/cols),cw=(R0.w-(cols-1)*8)/cols,chh=Math.min(cw,(gh-(rows-1)*8)/rows);
+  list.forEach((it,i)=>{const x=R0.x+(i%cols)*(cw+8),y=gy+Math.floor(i/cols)*(chh+8);const sel=(m[kind]||'none')===it.id;rr(c,x,y,cw,chh,10);c.fillStyle=sel?'#2a3b6a':'#1b2544';c.fill();c.strokeStyle=sel?'#fff':'#2b3446';c.lineWidth=sel?3:1.5;c.stroke();
+   const cos={hat:'none',pants:'none',shirt:'none'};cos[kind]=it.id;const k=Math.min(cw,chh)/(kind==='hat'?62:72);c.save();c.translate(x+cw/2,y+chh*(kind==='hat'?0.92:0.8));c.scale(k,k);if(kind==='hat'){c.beginPath();c.rect(-40,-80,80,62);c.clip();c.translate(0,22);}drawSpacer(c,0,0,col,1,0,false,1,false,cos);c.restore();
+   txt(c,it.name,x+cw/2,y+12,Math.max(9,Math.min(12,cw*0.12)),'#dfe6f2','center',true,2);addHit(x,y,cw,chh,()=>setMyCos({[kind]:it.id}));});}}
 
 // ================= BOOT =================
 buildGrid();buildSpots();buildVents();buildMap();
