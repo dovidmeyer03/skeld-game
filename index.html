@@ -476,6 +476,9 @@ function playerSay(raw,spk){if(isClient()&&!spk){const t=String(raw).replace(/\s
  const named=A.filter(a=>a!==p&&new RegExp('\\b'+a.name.toLowerCase()+'\\b').test(low));const live=named.filter(a=>a.alive);
  const room=ROOMS.find(r=>low.includes(r.name.toLowerCase()))||ROOMS.find(r=>{const w=r.name.toLowerCase().split(' ')[0];return w.length>3&&!['upper','lower'].includes(w)&&new RegExp('\\b'+w+'\\b').test(low);});
  const acc=RX_ACC.test(low),vou=RX_VOUCH.test(low),ask=RX_ASK.test(low),self=RX_SELF.test(low);
+ if(M.aiOn){M.lines.splice(M.shown,0,{who:p.id,text});chatClaims(text,p);
+  const _now=Date.now();if(!M.playerAiT||_now-M.playerAiT>4000){M.playerAiT=_now;const _resp=named.filter(a=>a.alive&&!a.human).slice(0,2).map(a=>a.id);if(!_resp.length){const _c=shuffle(A.filter(a=>a.alive&&!a.human));if(_c.length)_resp.push(_c[0].id);}M.aiQueue=(M.aiQueue||[]).filter(id=>!_resp.includes(id));M.aiQueue.unshift(..._resp);if(!M.aiChain)aiNext(M);}
+  SFX.click();return;}
  if(/\bengineer\b/.test(low)&&/\b(i'm|i am|im)\b/.test(low)){p.claimEng=true;const realE=A.find(b=>b.alive&&!b.human&&b.role==='engineer');if(realE&&G.engCount<=1){ins.push({who:realE.id,text:`That's a lie. I'm the Engineer this round, ${p.name}.`});M.claims.push({type:'contra',sp:realE.id,target:p.id});M.lines.splice(M.shown,0,...ins);M.shown+=1;SFX.click();return;}const w=A.find(b=>b.alive&&!b.human&&!b.imp&&b.ventSaw.some(v=>v.id===p.id));ins.push({who:(w||A.find(b=>b.alive&&!b.human)).id,text:w?`Okay, an Engineer can vent. That explains what I saw.`:`Noted, ${p.name} says they're the Engineer.`});M.lines.splice(M.shown,0,...ins);M.shown+=1;M.dtimer=Math.min(90,(M.dtimer||0)+3);SFX.click();return;}
  const honest=A.filter(b=>b.alive&&!b.human&&!b.imp);
  const alibiOf=a=>M.alibi[a.id]||(a.imp?[pick(ROOMS.filter(r=>r.name!==M.droom)).name]:roomsIn(a,M.w0,M.w1));
@@ -652,10 +655,10 @@ function callMeeting(kind,caller,body){
 }
 function buildMeeting(M){
  const A=G.agents,alive=A.filter(a=>a.alive),bots=alive.filter(a=>!a.human);const N=id=>A[id].name;
- const L=M.lines,C=M.claims=[];const say=(a,text)=>L.push({who:a.id,text});
+ const L=M.lines,C=M.claims=[];const say=(a,text)=>L.push({who:a.id,text,scripted:1});
  let death=M.body?G.deaths.find(d=>d.victim===M.body.id):null;
  const td=death?death.t:G.t,w0=death?td-15:Math.max(G.lastMeetT,G.t-25),w1=death?td+5:G.t;const droom=death?death.room:null;
- Object.assign(M,{td,w0,w1,droom,alibi:{},death});
+ Object.assign(M,{td,w0,w1,droom,alibi:{},death});for(const a of alive)a.aiVote=null;
  if(M.kind==='body')say(M.caller,fmt(pick(BODYLINES),{V:N(M.body.id),R:droom}));
  else{L.push({who:-1,text:M.caller.name+' called an emergency meeting.'});if(!M.caller.human&&M.caller.callReason){say(M.caller,M.caller.callReason);M.caller.callReason=null;}if(!M.caller.human&&M.caller.vitalsAlert!=null){say(M.caller,`Vitals show ${N(M.caller.vitalsAlert)} is dead. Someone killed them.`);M.caller.vitalsAlert=null;}}
  for(const b of bots){if(b.role==='monitor'&&b!==M.caller&&b.vitalsKnown.length&&Math.random()<0.6){const dd=b.vitalsKnown.filter(id=>!A[id].alive&&G.deaths.some(d=>d.victim===id&&d.t>=G.lastMeetT));if(dd.length)say(b,`I checked vitals: ${dd.map(N).join(' and ')} died since the last meeting.`);}}
@@ -729,6 +732,7 @@ function socialNotes(){const A=G.agents,S=G.social,N=id=>A[id]?A[id].name:'?',ou
   if(!ej.imp)for(const [sp,t] of m.accuses)if(t===ej.id)out.push({who:sp,about:t,w:12,s:`${N(sp)} pushed against ${N(t)}, who was ejected and confirmed crew.`});}}
  const uniq=new Map();for(const n of out)if(!uniq.has(n.s))uniq.set(n.s,n);return [...uniq.values()];}
 function botVote(b,M){const A=G.agents;
+ if(M.aiOn)return (b.aiVote!=null&&(b.aiVote==='skip'||(A[b.aiVote]&&A[b.aiVote].alive)))?b.aiVote:'skip';
  {const w=b.witness.find(w=>w.t>=G.lastMeetT&&A[w.killer]&&A[w.killer].alive&&w.killer!==b.id);if(w&&!b.imp)return w.killer;}
  if(b.aiVote!=null&&(b.aiVote==='skip'||(A[b.aiVote]&&A[b.aiVote].alive)))return b.aiVote;
  if(b.imp){let tgt=(M.scape!=null&&A[M.scape].alive&&!A[M.scape].imp)?M.scape:null;
@@ -751,17 +755,20 @@ function remoteComposing(){return false;}
 function meetingCanEnd(M){return G.agents.filter(a=>a.alive).every(a=>M.votes[a.id]!==undefined);}
 function updateMeeting(dt){const M=G.M;M.t+=dt;
  if(M.phase==='intro'){if(M.t>2.8){M.phase='discuss';M.t=0;M.dtimer=CFG.discTime;aiStartMeeting(M);if(M.dtimer<=0)startVote();}return;}
- if(M.phase==='discuss'||M.phase==='vote'){M.lineT-=dt;if(M.lineT<=0&&M.shown<M.lines.length){M.shown++;M.lineT=LINE_GAP;M.scroll=0;if(!M.chatOpen)SND.play('chat');}}
+ if(M.phase==='discuss'||M.phase==='vote'){M.lineT-=dt;if(M.lineT<=0&&M.shown<M.lines.length&&(M.aiResolved||M.t>12)){M.shown++;M.lineT=LINE_GAP;M.scroll=0;if(!M.chatOpen)SND.play('chat');}}
  if(M.phase==='discuss'){M.dtimer-=dt;if(M.dtimer<=0)startVote();return;}
  if(M.phase==='vote'){M.timer-=dt;const VT=CFG.voteTime;
-  for(const a of G.agents){if(!a.alive||a.human||M.votes[a.id]!==undefined)continue;if(M.voteAt[a.id]==null)M.voteAt[a.id]=Math.max(0.5,VT*rand(0.3,0.8));if(VT-M.timer>=M.voteAt[a.id]||M.timer<=0.6){M.votes[a.id]=botVote(a,M);voteLanded(a.id);}}
+  for(const a of G.agents){if(!a.alive||a.human||M.votes[a.id]!==undefined)continue;
+  if(M.aiOn&&a.aiVote==null&&M.timer>0.6&&((M.aiQueue&&M.aiQueue.length)||M.aiChain))continue;
+  if(M.voteAt[a.id]==null)M.voteAt[a.id]=Math.max(0.5,VT*rand(0.3,0.8));if(VT-M.timer>=M.voteAt[a.id]||M.timer<=0.6){M.votes[a.id]=botVote(a,M);voteLanded(a.id);}}
   if(meetingCanEnd(M)&&M.endT==null)M.endT=1.2;if(M.endT!=null)M.endT-=dt;
   if(M.timer<=0||(M.endT!=null&&M.endT<=0)){for(const a of G.agents)if(a.alive&&!a.human&&M.votes[a.id]===undefined)M.votes[a.id]=botVote(a,M);tally();}
   return;}
  if(M.phase==='results'){if(M.t>4){M.phase='eject';M.t=0;applyEject();SND.play('eject');}return;}
  if(M.phase==='eject'){if(M.t>6){finishMeeting();}}
 }
-function startVote(){const M=G.M;M.phase='vote';M.t=0;M.timer=CFG.voteTime;M.sel=null;M.picker=null;}
+function startVote(){const M=G.M;M.phase='vote';M.t=0;M.timer=CFG.voteTime;M.sel=null;M.picker=null;
+ if(M.aiOn){const need=shuffle(G.agents.filter(a=>a.alive&&!a.human&&a.aiVote==null&&!(M.aiQueue||[]).includes(a.id))).map(a=>a.id);if(need.length){M.aiQueue=(M.aiQueue||[]).concat(need);if(!M.aiChain)aiNext(M);}}}
 const LINE_GAP=2.8;
 function tally(){const M=G.M;const cnt={};let skip=0;for(const k in M.votes){const v=M.votes[k];if(v==='skip')skip++;else cnt[v]=(cnt[v]||0)+1;}
  let best=null,bv=0,tie=false;for(const k in cnt){if(cnt[k]>bv){bv=cnt[k];best=+k;tie=false;}else if(cnt[k]===bv)tie=true;}
@@ -1183,7 +1190,7 @@ function drawMeeting(){const c=ctx,M=G.M;c.fillStyle='rgba(4,6,14,.82)';c.fillRe
  const ph=M.phase==='discuss'?'DISCUSSION':M.phase==='vote'?'VOTING':'RESULTS';const tl=M.phase==='discuss'?M.dtimer:M.phase==='vote'?M.timer:Math.max(0,4-M.t);
  rr(c,Lo.timer.x,Lo.timer.y,Lo.timer.w,Lo.timer.h,7);c.fillStyle='#121a33';c.fill();{const f=fitText(c,ph+' '+Math.max(0,Math.ceil(tl))+'s',Lo.timer.w-10,13);txt(c,f.str,Lo.timer.x+Lo.timer.w/2,Lo.timer.y+15,f.fs,tl<=5&&M.phase!=='results'?'#ff8a7a':'#cfe0ff','center',true);}
  const nAlive=A.filter(a=>a.alive).length,nVoted=Object.keys(M.votes).length;
- rr(c,Lo.count.x,Lo.count.y,Lo.count.w,Lo.count.h,7);c.fillStyle='#121a33';c.fill();{const ai=G.aiStatus==='ai'?' · AI':G.aiStatus==='mixed'?' · AI+bots':G.aiStatus==='fallback'?' · bots':'';const f=fitText(c,(M.phase==='discuss'?'Alive: '+nAlive:'Votes: '+nVoted+'/'+nAlive)+ai,Lo.count.w-10,12);txt(c,f.str,Lo.count.x+Lo.count.w/2,Lo.count.y+15,f.fs,G.aiStatus==='fallback'?'#ffcf8a':G.aiStatus==='mixed'?'#ffe6a0':'#cfe0ff','center',true);}
+ rr(c,Lo.count.x,Lo.count.y,Lo.count.w,Lo.count.h,7);c.fillStyle='#121a33';c.fill();{const ai=G.aiStatus==='ai'?' · AI':G.aiStatus==='mixed'?' · AI degraded':G.aiStatus==='fallback'?' · AI unavailable':'';const f=fitText(c,(M.phase==='discuss'?'Alive: '+nAlive:'Votes: '+nVoted+'/'+nAlive)+ai,Lo.count.w-10,12);txt(c,f.str,Lo.count.x+Lo.count.w/2,Lo.count.y+15,f.fs,G.aiStatus==='fallback'?'#ffcf8a':G.aiStatus==='mixed'?'#ffe6a0':'#cfe0ff','center',true);}
  {const tt=M.phase==='results'?'VOTING RESULTS':M.phase==='vote'?'WHO IS THE SABOTEUR?':(M.kind==='body'?'BODY REPORTED BY ':'MEETING CALLED BY ')+M.caller.name.toUpperCase();const f=fitText(c,tt,Lo.title.w,LAND()?16:15);txt(c,f.str,Lo.title.x+Lo.title.w/2,Lo.title.y+Lo.title.h/2,f.fs,'#fff','center',true,3);}
  // AI indicator (small, inside the counter row's right edge would overlap: draw under the timer instead)
  // chat toggle with unread dot
@@ -1496,16 +1503,22 @@ function aiBody(b,M){const A=G.agents;const body={botId:b.name,meeting:{phase:M.
  return str;}
 function cleanSay(t){t=String(t||'').replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim();if(t.length<=120)return t;const cut=t.slice(0,118);const sp=cut.lastIndexOf(' ');return (sp>60?cut.slice(0,sp):cut).replace(/[,;:\-]+$/,'')+'…';}
 function aiUpdateStatus(M){G.aiStatus=M.aiOk&&!M.aiFail?'ai':M.aiOk&&M.aiFail?'mixed':M.aiFail?'fallback':(M.aiQueue&&M.aiQueue.length?'ai':'fallback');}
-async function aiStartMeeting(M){if(isClient())return;M.aiOk=0;M.aiFail=0;
+async function aiStartMeeting(M){if(isClient()){M.aiResolved=true;return;}M.aiOk=0;M.aiFail=0;
  let cr=aiCreds();if(!cr&&!NET.role){await aiSoloRefresh();cr=aiCreds();}
- if(!cr){G.aiStatus='fallback';return;}// creds truly missing: whole meeting uses the heuristic bots
- G.aiStatus='ai';M.aiQueue=shuffle(G.agents.filter(a=>a.alive&&!a.human)).map(a=>a.id);aiNext(M);}
+ if(!cr){G.aiStatus='fallback';M.aiResolved=true;return;}// creds truly missing: whole meeting uses the heuristic bots
+ M.aiOn=true;G.aiStatus='ai';
+ // AI purity: drop scripted opening lines; the report/call is announced system-style instead
+ M.lines=M.lines.filter(l=>!l.scripted);
+ if(M.kind==='body'&&!M.lines.some(l=>l.who===-1))M.lines.unshift({who:-1,text:G.agents[M.caller.id].name+' reported '+G.agents[M.body.id].name+"'s body"+(M.droom?' in '+M.droom:'')+'.'});
+ M.shown=M.lines.length;// reveal system announcement(s) instantly so model lines never precede the report
+ M.aiQueue=shuffle(G.agents.filter(a=>a.alive&&!a.human)).map(a=>a.id);M.aiResolved=true;aiNext(M);}
 function aiBotFallback(M,b){M.aiFail++;aiUpdateStatus(M);
- // only this bot falls back: give it a short template line if it has said nothing this meeting
- if(b.alive&&(M.phase==='discuss'||M.phase==='vote')&&!M.lines.some(l=>l.who===b.id)){const t=b.imp?pick(["Nothing weird on my side.","I was just doing tasks."]):(b.witness.length||b.ventSaw.length?null:pick(["I didn't see anything useful.","Nothing solid from me yet.","I was doing tasks, didn't see much."]));if(t)M.lines.splice(M.shown,0,{who:b.id,text:t});}}
+ // AI mode purity: no scripted fallback lines; a failed bot stays silent and the status reads AI degraded / AI unavailable.
+}
 async function aiCall(cr,body,ctlMs){const ctl=typeof AbortController!=='undefined'?new AbortController():null;const to=setTimeout(()=>{if(ctl)ctl.abort();},ctlMs);let status=0,data=null;
  try{const r=await fetch(AI_URL(cr.code),{method:'POST',headers:{'content-type':'application/json','x-host-token':cr.tok},body,signal:ctl?ctl.signal:undefined});status=r.status;data=await r.json().catch(()=>null);}catch(e){status=-1;}clearTimeout(to);return{status,data};}
-async function aiNext(M){if(G.M!==M||!M.aiQueue||!M.aiQueue.length)return;if(M.phase!=='discuss'&&M.phase!=='vote')return;
+async function aiNext(M){if(G.M!==M||!M.aiQueue||!M.aiQueue.length){if(M)M.aiChain=false;return;}if(M.phase!=='discuss'&&M.phase!=='vote'){M.aiChain=false;return;}
+ M.aiChain=true;
  const wait=Math.max(0,AI.lastAt+3500-Date.now(),(AI.lastEnd||0)+2100-Date.now(),(M.backoffUntil||0)-Date.now());if(wait){setTimeout(()=>aiNext(M),wait);return;}
  const b=G.agents[M.aiQueue.shift()];if(!b||!b.alive){aiNext(M);return;}
  let cr=M.aiDead?null:aiCreds();if(!cr&&!NET.role&&!M.aiDead){await aiSoloRefresh();cr=aiCreds();if(!cr)M.aiDead=true;}
