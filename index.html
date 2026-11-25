@@ -688,7 +688,8 @@ function joinRooms(r){if(!r||!r.length)return 'the hallway';const rooms=r.filter
 const BODYLINES=['I found {V}\'s body in {R}.','{V} is dead! Body\'s in {R}.','Body in {R}. It\'s {V}.'];
 function callMeeting(kind,caller,body){
  if(G.mode!=='play')return;
- closeMG();resetJoy();G.mapOpen=false;
+ closeMG();if(G.mode!=='play')return;// finishing the last task during the banner can end the round
+ resetJoy();G.mapOpen=false;
  if(body){body.reported=true;}
  for(const bd of G.bodies)bd.reported=true;
  G.mode='meeting';G.sab=null;
@@ -875,7 +876,9 @@ function releasePad(){if(G.sab&&G.sab.playerHold>=0){G.sab.playerHold=-1;if(isCl
 const LAND=()=>W>H;
 function panel(){if(LAND()){const s=Math.min(H-64,W-140,480);return{x:(W-s)/2,y:(H-s)/2+16,s};}const s=Math.min(W-24,H-210,480);return{x:(W-s)/2,y:(H-s)/2+10,s};}
 function openMG(mg){mg.done=false;mg.doneT=0;G.mg=mg;resetJoy();SFX.click();}
-function closeMG(){if(G.mg&&G.mg.onClose)G.mg.onClose();G.mg=null;releasePad();if(G.player)G.player.vis=null;}
+function closeMG(){const mg=G.mg;if(mg&&mg.onClose)mg.onClose();G.mg=null;releasePad();if(G.player)G.player.vis=null;
+ // a minigame closed during its success banner still completes (exactly once); an unfinished one does not
+ if(mg&&mg.done&&!mg.cbRan){mg.cbRan=true;const cb=mg.onDone;mg.onDone=null;if(cb)cb();}}
 function mgFinish(mg){if(mg.done)return;mg.done=true;mg.doneT=0.9;SFX.task();}
 function metalBG(c,P,col){rr(c,P.x,P.y,P.s,P.s,14);c.fillStyle=col||'#2a2f3a';c.fill();c.strokeStyle='#0b0c10';c.lineWidth=5;c.stroke();c.fillStyle='#6f7685';for(const [a,b] of [[0,0],[1,0],[0,1],[1,1]]){circ(c,P.x+12+a*(P.s-24),P.y+12+b*(P.s-24),4);c.fill();}}
 function MG_wires(){const C=['#e8343a','#3a64f0','#f0d43a','#d94ee6'],SY=['circle','tri','square','diamond'];const L=shuffle([0,1,2,3]),R=shuffle([0,1,2,3]),conn=[-1,-1,-1,-1];let drag=null;
@@ -1025,7 +1028,7 @@ function MG_vitals(){let bat=CFG.monBattery;if(isClient())act({a:'vitals',on:1})
    const d=G.deaths.find(q=>q.victim===a.id);txt(c,a.alive?'ALIVE':d?'DEAD · '+Math.round(G.t-d.t)+'s ago':'GONE',x+36,y+chh/2+9,10,a.alive?'#6dff9a':'#ff7a7a','left',true);
    if(a.alive){c.strokeStyle='#6dff9a';c.lineWidth=1.5;c.beginPath();const wl=cw<170?30:50,bx=x+cw-wl-10;for(let k=0;k<wl;k++){const ph=(k+G.rt*30)%25;const yy=y+chh/2-3+(ph>10&&ph<13?-8:ph>=13&&ph<15?6:0);k?c.lineTo(bx+k,yy):c.moveTo(bx+k,yy);}c.stroke();}});
   txt(c,'Battery',P.x+14,P.y+20,12,'#cfe','left',true);rr(c,P.x+80,P.y+13,P.s-100,12,5);c.fillStyle='#223';c.fill();rr(c,P.x+80,P.y+13,(P.s-100)*Math.max(0,bat)/CFG.monBattery,12,5);c.fillStyle='#6dff9a';c.fill();}};}
-function updateMG(dt){const mg=G.mg;if(!mg)return;if(mg.update)mg.update(dt);if(mg.done){mg.doneT-=dt;if(mg.doneT<=0){const cb=mg.onDone;G.mg=null;releasePad();G.player.vis=null;if(cb)cb();}}}
+function updateMG(dt){const mg=G.mg;if(!mg)return;if(mg.update)mg.update(dt);if(mg.done){mg.doneT-=dt;if(mg.doneT<=0){const cb=mg.cbRan?null:mg.onDone;mg.cbRan=true;mg.onDone=null;G.mg=null;releasePad();G.player.vis=null;if(cb)cb();}}}
 function drawMG(){const mg=G.mg;if(!mg)return;const c=ctx,P=panel();c.fillStyle='rgba(0,0,0,.62)';c.fillRect(0,0,W,H);
  UI.hits.length=0;
  if(mg.full){c.fillStyle='#070a10';c.fillRect(0,0,W,H);mg.draw(c,P);txt(c,mg.title,SA.l+16,SA.t+14,14,'#fff','left',true,4);const bx=W-SA.r-30,by=SA.t+24;c.fillStyle='#c33';circ(c,bx,by,19);c.fill();c.strokeStyle='#fff';c.lineWidth=3;c.beginPath();c.moveTo(bx-7,by-7);c.lineTo(bx+7,by+7);c.moveTo(bx+7,by-7);c.lineTo(bx-7,by+7);c.stroke();addHit(bx-24,by-24,48,48,()=>{closeMG();SFX.click();});return;}
