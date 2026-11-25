@@ -421,11 +421,11 @@ cv.addEventListener('pointermove',e=>{e.preventDefault();onMove(e.clientX,e.clie
 cv.addEventListener('pointerup',e=>{e.preventDefault();onUp(e.clientX,e.clientY,e.pointerId);},{passive:false});
 cv.addEventListener('pointercancel',e=>onUp(e.clientX,e.clientY,e.pointerId));
 cv.addEventListener('lostpointercapture',e=>{if(e.pointerId===JOY.id)resetJoy();});
-['touchstart','touchmove','touchend','gesturestart','dblclick','contextmenu'].forEach(ev=>document.addEventListener(ev,e=>{if(e.target&&e.target.closest&&e.target.closest('#chatbox'))return;if(e.cancelable)e.preventDefault();},{passive:false}));
+['touchstart','touchmove','touchend','gesturestart','dblclick','contextmenu'].forEach(ev=>document.addEventListener(ev,e=>{if(e.target&&e.target.closest&&e.target.closest('#chatbox,#mpbox'))return;if(e.cancelable)e.preventDefault();},{passive:false}));
 addEventListener('blur',()=>{resetJoy();for(const k in KEYS)KEYS[k]=false;releasePad();});
 document.addEventListener('visibilitychange',()=>{if(document.hidden){resetJoy();releasePad();}});
-addEventListener('keydown',e=>{if(document.activeElement===CI)return;KEYS[e.key.toLowerCase()]=true;ensureAudio();if(G.mode==='play'&&!G.mg){const k=e.key.toLowerCase();if(k==='e'||k===' ')doUse();if(k==='r')doReport();if(k==='m')G.mapOpen=!G.mapOpen;}if(G.mode==='title'&&e.key==='Enter')newGame();});
-addEventListener('keydown',e=>{if(document.activeElement!==CI&&G.mode==='play'&&!G.mg&&e.key.toLowerCase()==='q')doAbility();});
+addEventListener('keydown',e=>{const ae=document.activeElement;if(ae===CI||ae===MPN||ae===MPC)return;KEYS[e.key.toLowerCase()]=true;ensureAudio();if(G.mode==='play'&&!G.mg){const k=e.key.toLowerCase();if(k==='e'||k===' ')doUse();if(k==='r')doReport();if(k==='m')G.mapOpen=!G.mapOpen;}if(G.mode==='title'&&e.key==='Enter')newGame();});
+addEventListener('keydown',e=>{const ae=document.activeElement;if(ae!==CI&&ae!==MPN&&ae!==MPC&&G.mode==='play'&&!G.mg&&e.key.toLowerCase()==='q')doAbility();});
 addEventListener('keyup',e=>{KEYS[e.key.toLowerCase()]=false;});
 function onDown(x,y,id){
  const h=hitTest(x,y);
@@ -1292,7 +1292,7 @@ function onNet(m){switch(m.type){
  case 'player_joined':NET.players=Array.isArray(m.players)?m.players:NET.players;if(NET.role==='host'&&m.player)sendTo(m.player.clientId,{k:'cfg',cfg:CFG});if(isHost()&&NET.inGame&&m.player)sendTo(m.player.clientId,{k:'busy'});break;
  case 'player_left':NET.players=Array.isArray(m.players)?m.players:NET.players;if(isHost()&&NET.inGame)seatLeft(m.clientId);break;
  case 'room_closed':showClosed(m.reason==='host_left'?'Host left, room closed.':'The room was closed.');break;
- case 'error':NET.err=NET_ERR[m.error]||('Relay error: '+m.error);if(m.error==='host_already_connected')showClosed(NET.err);break;
+ case 'error':NET.err=NET_ERR[m.error]||('Relay error: '+m.error);if(m.error==='host_already_connected'){if(NET.role==='host'&&NET.hostToken&&NET.retries<3){NET.retries++;NET.status='Reconnecting…';const role=NET.role;setTimeout(()=>{if(NET.role===role&&!NET.closing)openSocket();},2000*NET.retries);}else showClosed(NET.err);}break;
  case 'pong':NET.lastPong=m.time;break;
  case 'input':case 'event':case 'chat':case 'snapshot':if(NET.role==='host')hostRecv(m);else clientRecv(m);break;}}
 function netTick(dt){if(!NET.ws)return;NET.pingT+=dt;if(NET.pingT>20){NET.pingT=0;rawSend({type:'ping'});}
