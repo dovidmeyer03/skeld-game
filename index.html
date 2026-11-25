@@ -1577,8 +1577,14 @@ async function aiNext(M){if(G.M!==M||!M.aiQueue||!M.aiQueue.length){if(M)M.aiCha
  if(status===429||status===502)M.backoffUntil=Date.now()+4000;
  if(status!==200||!data||typeof data.say!=='string'){aiBotFallback(M,b);aiNext(M);return;}
  M.aiOk++;aiUpdateStatus(M);
+ // stale = a human line was published while this call was in flight: never post this say or apply this vote
+ const stale=(M.chatEpoch||0)!==epochAtCall;
+ if(stale&&(M.phase==='discuss'||M.phase==='vote')){const ep=M.chatEpoch||0;M.aiRetry=M.aiRetry||{};
+  if(M.aiRetry[b.id]!==ep){M.aiRetry[b.id]=ep;M.aiQueue=(M.aiQueue||[]).filter(id=>id!==b.id);M.aiQueue.unshift(b.id);}// re-call once per epoch, with the fresh chat
+  else if(M.phase==='vote'&&M.votes[b.id]===undefined&&!(M.aiQueue||[]).includes(b.id)){M.aiQueue.push(b.id);}// capped: stay silent; uncast voters still get reconsidered
+  aiNext(M);return;}
  const say=cleanSay(data.say);if(say&&b.alive&&M.phase===phaseAtCall&&(M.phase==='discuss'||M.phase==='vote')){M.lines.splice(M.shown,0,{who:b.id,text:say});M.shown+=1;M.scroll=0;if(!M.chatOpen)SND.play('chat');chatClaims(say,b);}
- if(M.phase==='discuss'||M.phase==='vote'){const v=data.vote,stale=(M.chatEpoch||0)!==epochAtCall;if(!stale){if(v==='skip')b.aiVote='skip';else{const t=G.agents.find(a=>a.alive&&a!==b&&a.name===v);if(t&&targets.includes(v))b.aiVote=t.id;}}else if(M.phase==='vote'&&M.votes[b.id]===undefined&&!(M.aiQueue||[]).includes(b.id)){M.aiQueue.push(b.id);}}
+ if(M.phase==='discuss'||M.phase==='vote'){const v=data.vote;if(!stale){if(v==='skip')b.aiVote='skip';else{const t=G.agents.find(a=>a.alive&&a!==b&&a.name===v);if(t&&targets.includes(v))b.aiVote=t.id;}}else if(M.phase==='vote'&&M.votes[b.id]===undefined&&!(M.aiQueue||[]).includes(b.id)){M.aiQueue.push(b.id);}}
  aiNext(M);}
 
 // ================= IN-GAME MENU =================
