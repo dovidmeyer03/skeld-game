@@ -1849,18 +1849,25 @@ function buildLoungeMap(){LMAP=document.createElement('canvas');const S=2;LMAP.w
  c.save();c.globalAlpha=0.15;txt(c,'DEPARTURE LOUNGE',LW/2,LFLOOR.y+LFLOOR.h-22,14,'#000','center',true);c.restore();}
 function drawLounge(){const c=ctx,L=LAND(),m=LG.me;if(!LMAP)buildLoungeMap();if(!m){enterLounge({solo:!NET.role});return;}
  c.fillStyle='#05060c';c.fillRect(0,0,W,H);
- const hudR=L?150:0,hudT=L?0:120;const avW=W-16-hudR,avH=H-16-hudT;const Z=Math.min(avW/LW,avH/LH);const ox=8+(avW-LW*Z)/2,oy=8+hudT+(avH-LH*Z)/2;LG.view={Z,ox,oy};
- c.save();c.translate(ox,oy);c.scale(Z,Z);c.drawImage(LMAP,0,0,LW*2,LH*2,0,0,LW,LH);
+ // layout: landscape/desktop keep the whole room beside a right-hand HUD column; portrait zooms in under a top HUD band
+ const hudR=L?150:0,ph=92;const hudT=L?0:(8+ph+8+40+10);
+ const vpX=SA.l+8,vpY=SA.t+8+hudT,vpW=W-SA.l-SA.r-16-hudR,vpH=H-SA.t-SA.b-16-hudT;
+ const Zfit=Math.min(vpW/LW,vpH/LH),Z=L?Zfit:Zfit*1.9;
+ const vw=vpW/Z,vh=vpH/Z;LG.cam=LG.cam||{x:m.x,y:m.y};{const k=0.14;LG.cam.x+=(m.x-LG.cam.x)*k;LG.cam.y+=(m.y-LG.cam.y)*k;}
+ const camX=vw>=LW?LW/2:clamp(LG.cam.x,vw/2,LW-vw/2),camY=vh>=LH?(L?LH/2:vh/2-8/Z):clamp(LG.cam.y-20,vh/2,LH-vh/2);
+ const ox=vpX+vpW/2-camX*Z,oy=vpY+vpH/2-camY*Z;LG.view={Z,ox,oy};
+ c.save();c.beginPath();c.rect(vpX-8,vpY-6,vpW+16,vpH+14);c.clip();
+ c.translate(ox,oy);c.scale(Z,Z);c.drawImage(LMAP,0,0,LW*2,LH*2,0,0,LW,LH);
  // station highlight
  const pulse=0.5+0.5*Math.sin(G.rt*5);for(const st of LSTATIONS){const near=LG.near===st;const tx=st.id==='settings'?210:434;c.strokeStyle=near?`rgba(255,255,255,${0.6+0.4*pulse})`:`rgba(255,230,80,${0.25+0.3*pulse})`;c.lineWidth=near?3:2;rr(c,tx-46,st.id==='settings'?80:68,92,st.id==='settings'?36:48,8);c.stroke();txt(c,st.id==='settings'?'SETTINGS':'WARDROBE',tx,st.id==='settings'?128:128,10,near?'#fff':'#ffe066','center',true,3);}
  // actors
  COSMAP={};const list=[];const add=(p,name,isMe)=>{const col=PAL[p.colIdx][1];COSMAP[col]={hat:p.hat,pants:p.pants,shirt:p.shirt||'none'};list.push({y:p.y,d:()=>{if(p.spawnT>0){const a=Math.min(1,p.spawnT/1.1);c.fillStyle=`rgba(255,255,255,${0.55*a})`;c.beginPath();c.ellipse(p.x,p.y-24,20+10*(1-a),34,0,0,TAU);c.fill();}
    drawSpacer(c,p.x,p.y,col,p.face,p.walk,p.moving,p.spawnT>0?Math.max(0.35,1-p.spawnT):1);c.font='700 10px system-ui,sans-serif';c.textAlign='center';c.textBaseline='middle';c.lineWidth=3;c.strokeStyle='rgba(0,0,0,.85)';c.strokeText(name,p.x,p.y-66);c.fillStyle=isMe?'#fff':'#dfe6f2';c.fillText(name,p.x,p.y-66);}});};
  add(m,NET.role?(m.name||NET.name):'You',true);for(const k in LG.others)add(LG.others[k],LG.others[k].name,false);for(const b of LG.bots)add(b,b.name,false);
- list.sort((a,b)=>a.y-b.y).forEach(o=>o.d());c.restore();
+ list.sort((a,b)=>a.y-b.y).forEach(o=>o.d());c.restore();c.restore();
  // ---- HUD ----
  const host=NET.role==='host',solo=!NET.role;
- const pw=L?140:Math.min(240,W-120),px=W-SA.r-pw-8,py=SA.t+8,ph=92;rr(c,px,py,pw,ph,10);c.fillStyle='rgba(12,16,28,.88)';c.fill();c.strokeStyle='#4b5874';c.lineWidth=2;c.stroke();
+ const pw=L?140:Math.min(240,W-SA.r-8-(SA.l+102)),px=W-SA.r-pw-8,py=SA.t+8;rr(c,px,py,pw,ph,10);c.fillStyle='rgba(12,16,28,.88)';c.fill();c.strokeStyle='#4b5874';c.lineWidth=2;c.stroke();
  const fitC=(str,y,size,colr,bold,strokeW)=>{const f=fitText(c,str,pw-14,size,bold?'800 ':'600 ');txt(c,f.str,px+pw/2,y,f.fs,colr,'center',bold,strokeW);};
  if(solo){fitC('SOLO LOUNGE',py+24,13,'#5ee0ff',true);fitC('You + 9 bots',py+48,12,'#cfd8f5',true);fitC('Bots fill the empty seats',py+70,10,'#8f9bb8',false);}
  else{fitC('ROOM CODE',py+14,10,'#8f9bb8',true);fitC(NET.code||'…',py+36,20,'#fff',true,3);const n=Math.min(10,NET.players.length||1);
@@ -1868,9 +1875,10 @@ function drawLounge(){const c=ctx,L=LAND(),m=LG.me;if(!LMAP)buildLoungeMap();if(
  const sbY=py+ph+8;
  if(solo||host){bigBtn(c,px,sbY,pw,40,'START',(solo||(NET.myId&&NET.ws))?'#2f8a5a':'#444b5c',!!(solo||(NET.myId&&NET.ws)),()=>loungeStart());}
  else if(NET.myId){c.font='800 11px system-ui,sans-serif';const wl=c.measureText('Waiting for the host to start…').width<=pw-10?['Waiting for the host to start…']:['Waiting for the host','to start…'];wl.forEach((s2,i)=>{const f=fitText(c,s2,pw-10,11,'800 ');txt(c,f.str,px+pw/2,sbY+14+i*14,f.fs,'#cfd8f5','center',true);});}
- bigBtn(c,SA.l+100,SA.t+8,72,34,'⌨ KEYS','#3b4566',true,()=>{SND.play('ui');openKeys();});
- bigBtn(c,SA.l+8,SA.t+8,86,34,'LEAVE','#7a2f3a',true,()=>{SND.play('ui');if(NET.role)netClose();LG.active=false;G={mode:'title',rt:G.rt};});
- const msg=G.busy?'A round is in progress. You will join the next one.':G.full?'This round is full. Wait for the next one.':NET.err||'';if(msg)txt(c,msg,W/2-(L?hudR/2:0),SA.t+22,12,'#ffd84a','center',true,3);
+ {const leave=()=>{SND.play('ui');if(NET.role)netClose();LG.active=false;G={mode:'title',rt:G.rt};},keys=()=>{SND.play('ui');openKeys();};
+  if(L){const by=sbY+(solo||host?48:(NET.myId?40:8)),bw=(pw-6)/2;bigBtn(c,px,by,bw,34,'LEAVE','#7a2f3a',true,leave);bigBtn(c,px+bw+6,by,bw,34,'⌨ KEYS','#3b4566',true,keys);}
+  else{bigBtn(c,SA.l+8,SA.t+8,86,34,'LEAVE','#7a2f3a',true,leave);bigBtn(c,SA.l+8,SA.t+48,86,34,'⌨ KEYS','#3b4566',true,keys);}}
+ const msg=G.busy?'A round is in progress. You will join the next one.':G.full?'This round is full. Wait for the next one.':NET.err||'';if(msg){const f=fitText(c,msg,vpW-12,12,'800 ');txt(c,f.str,vpX+vpW/2,vpY+16,f.fs,'#ffd84a','center',true,3);}
  if(LG.toast)txt(c,LG.toast.text,W/2-(L?hudR/2:0),H*0.2,14,'#ffe066','center',true,3);
  // USE button (lights near a station) + label
  const r=L?clamp(H*0.13,40,52):clamp(W*0.13,42,54),ux=W-SA.r-r-14,uy=H-SA.b-r-20;const nr=LG.near;
