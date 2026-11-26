@@ -1426,8 +1426,8 @@ function cleanName(v){return String(v||'').replace(/[^A-Za-z0-9 _-]/g,'').trim()
 function cleanCode(v){return String(v||'').replace(/[^A-Za-z0-9_-]/g,'').toUpperCase().slice(0,32);}
 function newCode(){const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let x='';for(let i=0;i<6;i++)x+=A[Math.floor(Math.random()*A.length)];return x;}
 function netConnect(role,code,name){netClose();NET.closing=false;NET.role=role;NET.code=code;NET.name=name;NET.players=[];NET.status='Connecting…';NET.err='';NET.seq=0;NET.retries=0;NET.inGame=false;enterLounge({solo:false});openSocket();}
-function openSocket(){let ws;try{ws=new WebSocket(RELAY_WS+encodeURIComponent(NET.code)+'/ws');}catch(e){NET.err='Could not open a connection.';return;}NET.ws=ws;
- ws.onmessage=e=>{let m;try{m=JSON.parse(e.data);}catch(_){return;}try{onNet(m);}catch(err){console.error(err);}};
+function openSocket(){let ws;try{ws=new WebSocket(RELAY_WS+encodeURIComponent(NET.code)+'/ws');}catch(e){NET.err='Could not open a connection.';return;}NET.ws=ws;NET.lastRx=Date.now();NET.stuckT=0;
+ ws.onmessage=e=>{NET.lastRx=Date.now();let m;try{m=JSON.parse(e.data);}catch(_){return;}try{onNet(m);}catch(err){console.error(err);}};
  ws.onclose=()=>{if(NET.ws!==ws)return;NET.ws=null;if(NET.closing)return;
   if(NET.role==='host'&&NET.hostToken&&NET.retries<3){NET.retries++;NET.status='Reconnecting…';const role=NET.role;setTimeout(()=>{if(NET.role===role&&!NET.closing)openSocket();},700*NET.retries);NET.ws=null;NET.role=role;return;}
   if(NET.role==='player'&&NET.retries<3){NET.retries++;NET.status='Reconnecting…';NET.myId=null;const code=NET.code;setTimeout(()=>{if(NET.role==='player'&&!NET.closing&&NET.code===code)openSocket();},800*NET.retries);return;}
@@ -1445,7 +1445,11 @@ function onNet(m){switch(m.type){
  case 'error':NET.err=NET_ERR[m.error]||('Relay error: '+m.error);if(m.error==='host_already_connected'){if(NET.role==='host'&&NET.hostToken&&NET.retries<3){NET.retries++;NET.status='Reconnecting…';const role=NET.role;setTimeout(()=>{if(NET.role===role&&!NET.closing)openSocket();},2000*NET.retries);}else showClosed(NET.err);}break;
  case 'pong':NET.lastPong=m.time;break;
  case 'input':case 'event':case 'chat':case 'snapshot':if(NET.role==='host')hostRecv(m);else clientRecv(m);break;}}
-function netTick(dt){if(!NET.ws)return;NET.pingT+=dt;if(NET.pingT>20){NET.pingT=0;rawSend({type:'ping'});}
+// watchdog: a socket stuck closing (close event not delivered) or silent for 45s runs the normal close/reconnect path itself
+function netWatchdog(dt){const ws=NET.ws;if(!ws)return;const rs=ws.readyState;
+ if(rs>=2){NET.stuckT=(NET.stuckT||0)+dt;if(NET.stuckT>1.5){NET.stuckT=0;if(ws.onclose)ws.onclose();}return;}NET.stuckT=0;
+ if(rs===1&&NET.lastRx&&Date.now()-NET.lastRx>45000){NET.lastRx=Date.now();const h=ws.onclose;try{ws.close();}catch(_){}if(h)h();}}
+function netTick(dt){netWatchdog(dt);if(!NET.ws)return;NET.pingT+=dt;if(NET.pingT>20){NET.pingT=0;rawSend({type:'ping'});}
  if(NET.role==='host'&&NET.inGame&&G.agents){NET.snapT+=dt;if(NET.snapT>=0.1){NET.snapT=0;const base=buildSnap();for(const h of G.agents)if(h.remote)netSend({type:'snapshot',to:h.remote,data:filterSnap(base,h)});}
   NET.privT+=dt;if(NET.privT>=0.5){NET.privT=0;for(const a of G.agents)if(a.remote)sendPriv(a);}}}
 // ---------- host side ----------
