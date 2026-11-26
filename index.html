@@ -562,7 +562,7 @@ function chatClaims(text,sp){const M=G.M,A=G.agents;if(!M)return;const low=Strin
 function skeptics(spId,tId){const pool=shuffle(G.agents.filter(b=>b.alive&&!b.human&&!b.imp&&b.id!==spId&&b.id!==tId));const r=Math.random();const n=r<0.3?0:r<0.8?1:2;return pool.slice(0,n);}
 const ASKWHY=['Why {T}? What did you see, {S}?','{S}, do you have any evidence?','Based on what, {S}?','Hold on. Why {T}?'];
 function playerSay(raw,spk){if(isClient()&&!spk){const t=String(raw).replace(/\s+/g,' ').trim().slice(0,120);const hq=NET.players.find(q=>q.isHost);if(t)netSend(hq&&hq.clientId?{type:'chat',to:hq.clientId,data:{text:t}}:{type:'chat',data:{text:t}});SFX.click();return;}const M=G.M,A=G.agents,p=spk||G.player;if(!M||(M.phase!=='discuss'&&M.phase!=='vote'))return;if(!p.alive&&!NET.role)return;const text=String(raw).replace(/\s+/g,' ').trim().slice(0,120);if(!text)return;
- if(!p.alive){M.lines.splice(M.shown,0,{who:p.id,text,ghost:true});M.shown+=1;if(p===G.player){M.scroll=0;SFX.click();}else if(!G.player.alive&&!M.chatOpen)SND.play('chat');return;}// ghost line: flag fixed now; never reaches claims, epoch, AI queue or votes
+ if(!p.alive){M.lines.splice(M.shown,0,{who:p.id,text,ghost:true});M.shown+=1;if(M.gbReplyT==null&&Math.random()<0.7)M.gbReplyT=rand(1.5,3.5);if(p===G.player){M.scroll=0;SFX.click();}else if(!G.player.alive&&!M.chatOpen)SND.play('chat');return;}// ghost line: flag fixed now; never reaches claims, epoch, AI queue or votes
  const low=text.toLowerCase(),N=id=>A[id].name;const ins=[{who:p.id,text}];
  const named=A.filter(a=>a!==p&&new RegExp('\\b'+a.name.toLowerCase()+'\\b').test(low));const live=named.filter(a=>a.alive);
  const room=ROOMS.find(r=>low.includes(r.name.toLowerCase()))||ROOMS.find(r=>{const w=r.name.toLowerCase().split(' ')[0];return w.length>3&&!['upper','lower'].includes(w)&&new RegExp('\\b'+w+'\\b').test(low);});
@@ -846,8 +846,29 @@ function voteLanded(id){const M=G.M;M.voteT[id]=M.t;SND.play('vote');const left=
 function castVote(t){const M=G.M,p=G.player;if(!M||M.phase!=='vote'||!p.alive||M.votes[p.id]!==undefined)return;if(isClient()){act({a:'vote',t});M.votes[p.id]=t;M.sel=null;SND.play('vote');return;}M.votes[p.id]=t;M.sel=null;voteLanded(p.id);}
 function remoteComposing(){return false;}
 function meetingCanEnd(M){return G.agents.filter(a=>a.alive).every(a=>M.votes[a.id]!==undefined);}
+// ===== ghost bots: dead bots chat among ghosts (scripted, local) on the ghost:true path; the living never receive it =====
+const GB_KILLED=['It was {K}. They got me in {R}.','{K} did it. I saw it happen in {R}.','I never saw it coming. {K}, in {R}.'];
+const GB_EJ_CREW=['For the record, I was crew.','I was innocent. Somebody out there is lying.'];
+const GB_EJ_IMP=['Fine, you got me.','Good catch, I was a Saboteur.'];
+const GB_NOTKILLER=["They're looking at {A}, but it wasn't {A}. It was {K}.","Not {A}! It was {K}."];
+const GB_ISKILLER=['Yes! Vote out {A}!','Come on, {A} is the one.'];
+const GB_UNSURE=["{A}? I really can't tell from here.",'I hope they get it right this time.','Being a ghost is quiet. Anyone else watching?'];
+const GB_REPLY=['Agreed.','Same here.','Nothing we can do now but watch.','I hope they figure it out.'];
+function ghostKnows(b){const d=G.deaths.find(x=>x.victim===b.id&&x.killer!=null);return d&&G.agents[d.killer]?{K:G.agents[d.killer].name,R:d.room||'the hallway'}:null;}
+function ghostSay(M,b,text){M.lines.splice(M.shown,0,{who:b.id,text,ghost:true});M.shown+=1;M.gbN=(M.gbN||0)+1;if(G.player&&!G.player.alive&&!M.chatOpen)SND.play('chat');}
+function ghostBotLine(M,b){const kn=ghostKnows(b),ej=((G.social&&G.social.ejected)||[]).find(e=>e.id===b.id);M.gbIntro=M.gbIntro||{};
+ if(!M.gbIntro[b.id]){M.gbIntro[b.id]=1;if(kn)return fmt(pick(GB_KILLED),kn);if(ej)return pick(b.imp?GB_EJ_IMP:GB_EJ_CREW);}
+ const an=topAccused(M),A=an&&G.agents.find(a=>a.name===an&&a.alive);if(A&&kn){return fmt(pick(A.name===kn.K?GB_ISKILLER:GB_NOTKILLER),{A:A.name,K:kn.K});}
+ return fmt(pick(GB_UNSURE),{A:A?A.name:'Anyone'}).replace(/^Anyone\? /,'');}
+function ghostBotsTick(M,dt){if(isClient()||(M.phase!=='discuss'&&M.phase!=='vote'))return;
+ if(!G.agents.some(a=>a.human&&!a.alive))return;// only when a human ghost is there to read it
+ const gs=G.agents.filter(a=>!a.alive&&!a.human);if(!gs.length)return;
+ if(M.gbReplyT!=null){M.gbReplyT-=dt;if(M.gbReplyT<=0){M.gbReplyT=null;if((M.gbN||0)<10)ghostSay(M,pick(gs),pick(GB_REPLY));}}
+ M.gbT=M.gbT==null?rand(3,6):M.gbT-dt;if(M.gbT>0||(M.gbN||0)>=6)return;M.gbT=rand(7,12);
+ const fresh=gs.filter(b=>!(M.gbIntro&&M.gbIntro[b.id]));const b=fresh.length?fresh[0]:pick(gs);const t=ghostBotLine(M,b);if(t)ghostSay(M,b,t);}
 function updateMeeting(dt){const M=G.M;M.t+=dt;
  if(M.phase==='intro'){if(M.t>2.8){M.phase='discuss';M.t=0;M.dtimer=CFG.discTime;aiStartMeeting(M);if(M.dtimer<=0)startVote();}return;}
+ ghostBotsTick(M,dt);
  if(M.phase==='discuss'||M.phase==='vote'){M.lineT-=dt;if(M.lineT<=0&&M.shown<M.lines.length&&(M.aiResolved||M.t>12)){M.shown++;M.lineT=LINE_GAP;M.scroll=0;if(!M.chatOpen)SND.play('chat');}}
  if(M.phase==='discuss'){M.dtimer-=dt;if(M.dtimer<=0)startVote();return;}
  if(M.phase==='vote'){M.timer-=dt;const VT=CFG.voteTime;
