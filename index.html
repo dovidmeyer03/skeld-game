@@ -499,7 +499,7 @@ addEventListener('keydown',e=>{if(typingNow())return;// never while a text field
  if(G.mode==='meeting'&&G.M&&G.M.chatOpen&&(k==='pageup'||k==='pagedown')){e.preventDefault();const M=G.M;M.scroll=clamp((M.scroll||0)+(k==='pageup'?150:-150),0,M.maxScroll||0);}
  if(G.mode==='meeting'&&G.M&&!G.menuOpen&&k===KB.chat){e.preventDefault();G.M.chatOpen=true;setTimeout(()=>{if(CHATBOX.style.display!=='none'&&!CHATBOX.hidden)CI.focus();},80);}
  if(G.mode==='play'&&!G.mg&&!G.menuOpen){const p=G.player;
-  if(k===KB.use||k===KB_ALT.use)doUse();if(k===KB.report)doReport();if(k===KB.map)G.mapOpen=!G.mapOpen;if(k===KB.ability)doAbility();if(k===KB.kill)doKill_P();if(k===KB.zoom&&overviewOk())G.overview=!G.overview;
+  if(k===KB.use||k===KB_ALT.use)doUse();if(k===KB.report)doReport();if(k===KB.map)G.mapOpen=!G.mapOpen;if(k===KB.ability)doAbility();if(k===KB.kill)doKill_P();if(k===KB.zoom&&overviewOk()){G.overview=!G.overview;resetJoy();}
   if(k===KB.sabotage&&p&&p.imp&&!G.sab&&G.sabCD<=0){G.sabMenu=!G.sabMenu;SFX.click();}}
  if(G.mode==='title'&&k==='enter')enterLounge({solo:true});
  if(G.mode==='lobby'&&!G.mg){if(k===KB.use||k===KB_ALT.use)loungeUse();if(k==='escape')LG.wardrobe=false;}
@@ -522,7 +522,7 @@ function onDown(x,y,id){
   if(G.mapOpen){G.mapOpen=false;return;}
   if(G.mg){if(G.mg.down)G.mg.down(x,y,id);return;}
   if(G.deathFx)return;
-  if(!G.menuOpen&&JOY.id===null&&x<W*(LAND()?0.55:0.62)){JOY.id=id;JOY.bx=x;JOY.by=y;JOY.x=x;JOY.y=y;JOY.vx=0;JOY.vy=0;try{cv.setPointerCapture(id);}catch(_){}}
+  if(!G.menuOpen&&!overviewOn()&&JOY.id===null&&x<W*(LAND()?0.55:0.62)){JOY.id=id;JOY.bx=x;JOY.by=y;JOY.x=x;JOY.y=y;JOY.vx=0;JOY.vy=0;try{cv.setPointerCapture(id);}catch(_){}}
  }else if(G.mode==='meeting'){if(!G.menuOpen)meetingDown(x,y,id);}
  else if(G.mode==='lobby'&&!LG.wardrobe&&JOY.id===null&&x<W*0.55){JOY.id=id;JOY.bx=x;JOY.by=y;JOY.x=x;JOY.y=y;JOY.vx=0;JOY.vy=0;try{cv.setPointerCapture(id);}catch(_){}}
 }
@@ -1256,9 +1256,11 @@ function drawHUD(){const c=ctx,p=G.player;
    for(const [dx,l,dv] of [[-62,'−',-0.1],[-30,'+',0.1]]){rr(c,px+pw+dx-2,py+83,28,26,6);c.fillStyle='#2b3a66';c.fill();txt(c,l,px+pw+dx+12,py+96,16,'#fff','center',true);addHit(px+pw+dx-4,py+80,32,32,()=>MUSIC.setVol(MUSIC.vol+dv));}}}
  // map button
  const mx=W-SA.r-34,my=SA.t+30;rr(c,mx-22,my-20,44,40,8);c.fillStyle='rgba(30,36,52,.9)';c.fill();c.strokeStyle='#fff';c.lineWidth=2;c.stroke();c.strokeStyle='#cfe';c.lineWidth=2;c.beginPath();c.moveTo(mx-12,my-8);c.lineTo(mx-4,my-12);c.lineTo(mx+4,my-8);c.lineTo(mx+12,my-12);c.lineTo(mx+12,my+8);c.lineTo(mx+4,my+12);c.lineTo(mx-4,my+8);c.lineTo(mx-12,my+12);c.closePath();c.stroke();addHit(mx-24,my-22,48,44,()=>{G.mapOpen=true;});
- if(overviewOk()){const zx=mx,zy=my+50,on=!!G.overview;rr(c,zx-22,zy-20,44,40,8);c.fillStyle=on?'#3a6fd8':'rgba(30,36,52,.9)';c.fill();c.strokeStyle='#fff';c.lineWidth=2;c.stroke();c.strokeStyle='#cfe';c.lineWidth=2.2;c.beginPath();for(const [sx,sy] of [[-1,-1],[1,-1],[1,1],[-1,1]]){c.moveTo(zx+sx*12,zy+sy*5);c.lineTo(zx+sx*12,zy+sy*11);c.lineTo(zx+sx*5,zy+sy*11);}c.stroke();c.strokeRect(zx-5,zy-4,10,8);addHit(zx-24,zy-22,48,44,()=>{G.overview=!G.overview;SND.play('ui');});}
+ if(overviewOk()){const zx=mx,zy=my+50,on=!!G.overview;rr(c,zx-22,zy-20,44,40,8);c.fillStyle=on?'#3a6fd8':'rgba(30,36,52,.9)';c.fill();c.strokeStyle='#fff';c.lineWidth=2;c.stroke();c.strokeStyle='#cfe';c.lineWidth=2.2;c.beginPath();for(const [sx,sy] of [[-1,-1],[1,-1],[1,1],[-1,1]]){c.moveTo(zx+sx*12,zy+sy*5);c.lineTo(zx+sx*12,zy+sy*11);c.lineTo(zx+sx*5,zy+sy*11);}c.stroke();c.strokeRect(zx-5,zy-4,10,8);addHit(zx-24,zy-22,48,44,()=>{G.overview=!G.overview;resetJoy();SND.play('ui');});}
  // arrows
  if(!G.mg&&p.inVent==null){const ob=objective();if(ob)edgeArrow(ob.x,ob.y,ob.col,true);if(G.sab&&p.alive&&!p.imp)for(const fp of G.sab.pts)if(!fp.fixed)edgeArrow(fp.x,fp.y,'#ff3030');}
+ // whole-map view: a clean overview (no on-map action buttons or joystick); the zoom button in the top bar closes it
+ if(overviewOn()){if(G.toast)txt(c,G.toast.text,W/2,H*0.3,16,'#7dff9a','center',true,4);{const f=fitText(c,'Whole-map view: tap the zoom button, Z or Esc to return',W-SA.l-SA.r-24,12,'800 ');txt(c,f.str,W/2,H-SA.b-16,f.fs,'rgba(255,255,255,.8)','center',true,3);}return;}
  // buttons
  const r=LAND()?clamp(H*0.13,40,52):clamp(W*0.13,42,54);const ux=W-SA.r-r-14,uy=H-SA.b-r-20;const LSx=LAND();
  const slot={use:{x:ux,y:uy,r},report:LSx?{x:ux-r*2-14,y:uy+r*0.15,r:Math.max(38,r*0.85)}:{x:ux,y:uy-r-Math.max(38,r*0.85)-14,r:Math.max(38,r*0.85)}};
