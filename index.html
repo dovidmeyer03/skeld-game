@@ -1695,6 +1695,14 @@ function packBody(body,C){const fits=()=>{body.memories=memFlat(C);const s0=JSON
   else{C.role=C.role.map(x=>x.slice(0,80));body.targets=body.targets.slice(0,9);str=JSON.stringify(Object.assign(body,{memories:memFlat(C)}));break;}
   str=fits();}
  return str;}
+// ===== echo guard: drop an AI line that repeats the bot's own last line or a recent public line (no extra AI calls) =====
+const ECHO_NEG=new Set(['not','no','never','nobody','didnt','wasnt','isnt','dont','cant','wont','werent','arent','hasnt','havent','nothing']);
+function echoToks(t){return String(t).toLowerCase().replace(/[’']/g,'').replace(/[^a-z0-9 ]+/g,' ').split(/\s+/).filter(Boolean);}
+function echoKey(w){if(ECHO_NEG.has(w))return true;if(G.agents&&G.agents.some(a=>a.name.toLowerCase()===w))return true;return ROOMS.some(r=>r.name.toLowerCase().split(' ').includes(w)&&w.length>3);}
+function isEcho(say,prev){const a=echoToks(say),b=echoToks(prev);if(!a.length||!b.length)return false;if(a.join(' ')===b.join(' '))return true;
+ if(a.length<5||b.length<5)return false;const A=new Set(a),B=new Set(b);for(const w of A)if(!B.has(w)&&echoKey(w))return false;for(const w of B)if(!A.has(w)&&echoKey(w))return false;// new name/room/negation = new information
+ let inter=0;for(const w of A)if(B.has(w))inter++;return inter/(A.size+B.size-inter)>=0.85;}
+function echoOf(M,b,say){const vis=M.lines.slice(0,M.shown).filter(l=>l.who>=0&&!l.ghost);const own=[...vis].reverse().find(l=>l.who===b.id);if(own&&isEcho(say,own.text))return own.text;for(const l of vis.slice(-12))if(isEcho(say,l.text))return l.text;return null;}
 function cleanSay(t){t=String(t||'').replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim();if(t.length<=120)return t;const cut=t.slice(0,118);const sp=cut.lastIndexOf(' ');return (sp>60?cut.slice(0,sp):cut).replace(/[,;:\-]+$/,'')+'…';}
 function aiUpdateStatus(M){G.aiStatus=M.aiOk&&!M.aiFail?'ai':M.aiOk&&M.aiFail?'mixed':M.aiFail?'fallback':(M.aiQueue&&M.aiQueue.length?'ai':'fallback');}
 // ===== AI quota fallback: only the worker's ai_quota reply switches a meeting to the automatic (scripted/heuristic) bots =====
@@ -1748,7 +1756,8 @@ async function aiNext(M){if(G.M!==M||!M.aiQueue||!M.aiQueue.length){if(M)M.aiCha
   if(M.aiRetry[b.id]!==ep){M.aiRetry[b.id]=ep;M.aiQueue=(M.aiQueue||[]).filter(id=>id!==b.id);M.aiQueue.unshift(b.id);}// re-call once per epoch, with the fresh chat
   else if(M.phase==='vote'&&M.votes[b.id]===undefined&&!(M.aiQueue||[]).includes(b.id)){M.aiQueue.push(b.id);}// capped: stay silent; uncast voters still get reconsidered
   aiNext(M);return;}
- const say=cleanSay(data.say);if(say&&b.alive&&M.phase===phaseAtCall&&(M.phase==='discuss'||M.phase==='vote')){M.lines.splice(M.shown,0,{who:b.id,text:say});M.shown+=1;M.scroll=0;if(!M.chatOpen)SND.play('chat');(M.aiSpk=M.aiSpk||{})[b.id]=1;chatClaims(say,b);}
+ let say=cleanSay(data.say);if(say&&echoOf(M,b,say)){M.echoDropped=(M.echoDropped||0)+1;say='';}// repeat: say nothing this turn; the vote below still counts
+ if(say&&b.alive&&M.phase===phaseAtCall&&(M.phase==='discuss'||M.phase==='vote')){M.lines.splice(M.shown,0,{who:b.id,text:say});M.shown+=1;M.scroll=0;if(!M.chatOpen)SND.play('chat');(M.aiSpk=M.aiSpk||{})[b.id]=1;chatClaims(say,b);}
  if(M.phase==='discuss'||M.phase==='vote'){const v=data.vote;if(!stale){if(v==='skip')b.aiVote='skip';else{const t=G.agents.find(a=>a.alive&&a!==b&&a.name===v);if(t&&targets.includes(v))b.aiVote=t.id;}}else if(M.phase==='vote'&&M.votes[b.id]===undefined&&!(M.aiQueue||[]).includes(b.id)){M.aiQueue.push(b.id);}}
  aiNext(M);}
 
