@@ -562,7 +562,7 @@ function chatClaims(text,sp){const M=G.M,A=G.agents;if(!M)return;const low=Strin
 function skeptics(spId,tId){const pool=shuffle(G.agents.filter(b=>b.alive&&!b.human&&!b.imp&&b.id!==spId&&b.id!==tId));const r=Math.random();const n=r<0.3?0:r<0.8?1:2;return pool.slice(0,n);}
 const ASKWHY=['Why {T}? What did you see, {S}?','{S}, do you have any evidence?','Based on what, {S}?','Hold on. Why {T}?'];
 function playerSay(raw,spk){if(isClient()&&!spk){const t=String(raw).replace(/\s+/g,' ').trim().slice(0,120);const hq=NET.players.find(q=>q.isHost);if(t)netSend(hq&&hq.clientId?{type:'chat',to:hq.clientId,data:{text:t}}:{type:'chat',data:{text:t}});SFX.click();return;}const M=G.M,A=G.agents,p=spk||G.player;if(!M||(M.phase!=='discuss'&&M.phase!=='vote'))return;if(!p.alive&&!NET.role)return;const text=String(raw).replace(/\s+/g,' ').trim().slice(0,120);if(!text)return;
- if(!p.alive){M.lines.splice(M.shown,0,{who:p.id,text,ghost:true});M.shown+=1;if(M.gbReplyT==null&&Math.random()<0.7)M.gbReplyT=rand(1.5,3.5);if(p===G.player){M.scroll=0;SFX.click();}else if(!G.player.alive&&!M.chatOpen)SND.play('chat');return;}// ghost line: flag fixed now; never reaches claims, epoch, AI queue or votes
+ if(!p.alive){M.lines.splice(M.shown,0,{who:p.id,text,ghost:true});M.shown+=1;M.gAsk=1;if(!GHOST_AI&&M.gbReplyT==null&&Math.random()<0.7)M.gbReplyT=rand(1.5,3.5);if(p===G.player){M.scroll=0;SFX.click();}else if(!G.player.alive&&!M.chatOpen)SND.play('chat');return;}// ghost line: flag fixed now; never reaches claims, epoch, AI queue or votes
  const low=text.toLowerCase(),N=id=>A[id].name;const ins=[{who:p.id,text}];
  const named=A.filter(a=>a!==p&&new RegExp('\\b'+a.name.toLowerCase()+'\\b').test(low));const live=named.filter(a=>a.alive);
  const room=ROOMS.find(r=>low.includes(r.name.toLowerCase()))||ROOMS.find(r=>{const w=r.name.toLowerCase().split(' ')[0];return w.length>3&&!['upper','lower'].includes(w)&&new RegExp('\\b'+w+'\\b').test(low);});
@@ -846,6 +846,7 @@ function voteLanded(id){const M=G.M;M.voteT[id]=M.t;SND.play('vote');const left=
 function castVote(t){const M=G.M,p=G.player;if(!M||M.phase!=='vote'||!p.alive||M.votes[p.id]!==undefined)return;if(isClient()){act({a:'vote',t});M.votes[p.id]=t;M.sel=null;SND.play('vote');return;}M.votes[p.id]=t;M.sel=null;voteLanded(p.id);}
 function remoteComposing(){return false;}
 function meetingCanEnd(M){return G.agents.filter(a=>a.alive).every(a=>M.votes[a.id]!==undefined);}
+// ===== scripted ghost lines (what main ships today); disabled whenever GHOST_AI is on =====
 // ===== ghost bots: dead bots chat among ghosts (scripted, local) on the ghost:true path; the living never receive it =====
 const GB_KILLED=['It was {K}. They got me in {R}.','{K} did it. I saw it happen in {R}.','I never saw it coming. {K}, in {R}.'];
 const GB_EJ_CREW=['For the record, I was crew.','I was innocent. Somebody out there is lying.'];
@@ -854,18 +855,57 @@ const GB_NOTKILLER=["They're looking at {A}, but it wasn't {A}. It was {K}.","No
 const GB_ISKILLER=['Yes! Vote out {A}!','Come on, {A} is the one.'];
 const GB_UNSURE=["{A}? I really can't tell from here.",'I hope they get it right this time.','Being a ghost is quiet. Anyone else watching?'];
 const GB_REPLY=['Agreed.','Same here.','Nothing we can do now but watch.','I hope they figure it out.'];
-function ghostKnows(b){const d=G.deaths.find(x=>x.victim===b.id&&x.killer!=null);return d&&G.agents[d.killer]?{K:G.agents[d.killer].name,R:d.room||'the hallway'}:null;}
-function ghostSay(M,b,text){M.lines.splice(M.shown,0,{who:b.id,text,ghost:true});M.shown+=1;M.gbN=(M.gbN||0)+1;if(G.player&&!G.player.alive&&!M.chatOpen)SND.play('chat');}
+function ghostKnowsScripted_unused(b){const d=G.deaths.find(x=>x.victim===b.id&&x.killer!=null);return d&&G.agents[d.killer]?{K:G.agents[d.killer].name,R:d.room||'the hallway'}:null;}
+function ghostSayScripted_unused(M,b,text){M.lines.splice(M.shown,0,{who:b.id,text,ghost:true});M.shown+=1;M.gbN=(M.gbN||0)+1;if(G.player&&!G.player.alive&&!M.chatOpen)SND.play('chat');}
 function ghostBotLine(M,b){const kn=ghostKnows(b),ej=((G.social&&G.social.ejected)||[]).find(e=>e.id===b.id);M.gbIntro=M.gbIntro||{};
  if(!M.gbIntro[b.id]){M.gbIntro[b.id]=1;if(kn)return fmt(pick(GB_KILLED),kn);if(ej)return pick(b.imp?GB_EJ_IMP:GB_EJ_CREW);}
  const an=topAccused(M),A=an&&G.agents.find(a=>a.name===an&&a.alive);if(A&&kn){return fmt(pick(A.name===kn.K?GB_ISKILLER:GB_NOTKILLER),{A:A.name,K:kn.K});}
  return fmt(pick(GB_UNSURE),{A:A?A.name:'Anyone'}).replace(/^Anyone\? /,'');}
-function ghostBotsTick(M,dt){if(isClient()||(M.phase!=='discuss'&&M.phase!=='vote'))return;
+function ghostScriptTick(M,dt){if(isClient()||(M.phase!=='discuss'&&M.phase!=='vote'))return;
  if(!G.agents.some(a=>a.human&&!a.alive))return;// only when a human ghost is there to read it
  const gs=G.agents.filter(a=>!a.alive&&!a.human);if(!gs.length)return;
  if(M.gbReplyT!=null){M.gbReplyT-=dt;if(M.gbReplyT<=0){M.gbReplyT=null;if((M.gbN||0)<10)ghostSay(M,pick(gs),pick(GB_REPLY));}}
  M.gbT=M.gbT==null?rand(3,6):M.gbT-dt;if(M.gbT>0||(M.gbN||0)>=6)return;M.gbT=rand(7,12);
  const fresh=gs.filter(b=>!(M.gbIntro&&M.gbIntro[b.id]));const b=fresh.length?fresh[0]:pick(gs);const t=ghostBotLine(M,b);if(t)ghostSay(M,b,t);}
+// ===== ghost bots through the AI route =====
+// NOT FOR RELEASE: the worker has no ghost mode yet (prompt + budget are an operator decision). Branch-only switch.
+// AI purity: ghost bots speak only through the AI route; on any error, quota or missing credentials they stay silent (no scripted lines).
+let GHOST_AI=true;const GHOST_AI_INTRO=3,GHOST_AI_REPLY=4;
+function ghostKnows(b){const d=G.deaths.find(x=>x.victim===b.id&&x.killer!=null);return d&&G.agents[d.killer]?{K:G.agents[d.killer].name,R:d.room||'the hallway'}:null;}
+function ghostSay(M,b,text){M.lines.splice(M.shown,0,{who:b.id,text,ghost:true});M.shown+=1;M.gbN=(M.gbN||0)+1;if(G.player&&!G.player.alive&&!M.chatOpen)SND.play('chat');}
+// request for one dead bot, in the EXISTING /ai schema (botId, meeting{phase,round,accused,dead}, memories, chat, targets):
+// the ghost framing and only this bot's own facts go in memories; public and ghost-channel lines go in chat (ghost speakers marked);
+// targets are the living names because the worker requires them; the reply's vote is ignored. Never another bot's memories.
+function ghostAiBody(b,M){const A=G.agents,N=id=>A[id]?A[id].name:'?',k=ghostKnows(b),ej=((G.social&&G.social.ejected)||[]).find(e=>e.id===b.id),mem=[];
+ mem.push('You are dead. You are speaking as a ghost: only other ghosts can hear you, the living cannot. You cannot vote.');
+ mem.push('Talk with the other ghosts about who the Saboteur might be. Only state what you know; do not claim an alibi.');
+ mem.push(b.imp?'You were secretly a Saboteur.':'You were crew'+(b.role?' with the '+ROLES[b.role].name+' role':'')+'.');
+ if(k)mem.push(`You were killed by ${k.K} in ${k.R}. You saw it happen.`);if(ej)mem.push('You were voted out of the game.');
+ for(const w of (b.witOld||[]).concat(b.witness||[]))if(A[w.killer]&&A[w.victim])mem.push(`Before you died you saw ${N(w.killer)} kill ${N(w.victim)} in ${w.room}.`);
+ const chat=M.lines.slice(0,M.shown).filter(l=>l.who!==-2).map(l=>({speaker:l.who>=0?N(l.who)+(l.ghost?' (ghost)':''):'System',text:String(l.text).slice(0,200)})).slice(-30);
+ const body={botId:b.name,meeting:{phase:M.phase==='vote'?'voting':'discussion',round:M.round||G.round||1,accused:topAccused(M),dead:A.filter(a=>!a.alive).map(a=>a.name)},
+  memories:mem.slice(0,10).map(x=>x.slice(0,200)),chat,targets:A.filter(a=>a.alive).map(a=>a.name)};
+ let str=JSON.stringify(body);while(byteLen(str)>4000){if(body.chat.length>6)body.chat.shift();else if(body.memories.length>4)body.memories.pop();else if(body.chat.length)body.chat.shift();else break;str=JSON.stringify(body);}
+ return str;}
+// queue: dead bots only while a human ghost is present; living bots always go first; same call spacing as living turns
+function ghostBotsTick(M,dt){if(!GHOST_AI)return ghostScriptTick(M,dt);// mode off: today's scripted lines; mode on: AI route only, never both
+ if(isClient()||!M.aiOn||(M.phase!=='discuss'&&M.phase!=='vote'))return;
+ if(!G.agents.some(a=>a.human&&!a.alive))return;const gs=G.agents.filter(a=>!a.alive&&!a.human);if(!gs.length)return;
+ M.gq=M.gq||[];if(!M.gQueued){M.gQueued=1;for(const b of shuffle(gs).slice(0,GHOST_AI_INTRO))M.gq.push(b.id);}
+ if(M.gAsk){M.gAsk=0;if((M.gReplyN||0)<GHOST_AI_REPLY){M.gReplyN=(M.gReplyN||0)+1;const b=pick(gs);if(!M.gq.includes(b.id))M.gq.push(b.id);}}
+ if(M.gq.length&&!M.gChain&&!M.aiChain&&!(M.aiQueue&&M.aiQueue.length))aiGhostNext(M);}
+async function aiGhostNext(M){if(G.M!==M||!M.aiOn||!M.gq||!M.gq.length||(M.phase!=='discuss'&&M.phase!=='vote')||M.aiChain||(M.aiQueue&&M.aiQueue.length))return;
+ M.gChain=true;const wait=Math.max(0,AI.lastAt+3500-Date.now(),(AI.lastEnd||0)+2100-Date.now(),(M.backoffUntil||0)-Date.now());if(wait){setTimeout(()=>{M.gChain=false;},wait);return;}
+ const b=G.agents[M.gq.shift()];const cr=M.aiDead?null:aiCreds();if(!b||b.alive||!cr){M.gChain=false;return;}
+ const round=M.round,body=ghostAiBody(b,M);AI.lastAt=Date.now();
+ const {status,data}=await aiCall(cr,body,12000);AI.lastEnd=Date.now();AI.log.push({bot:b.name,ghost:1,status,bytes:byteLen(body),t:Date.now()});if(AI.log.length>200)AI.log.splice(0,AI.log.length-200);M.gChain=false;
+ if(G.M!==M||M.round!==round||!M.aiOn||(M.phase!=='discuss'&&M.phase!=='vote'))return;// meeting moved on: drop
+ if(data&&data.error==='ai_quota'){aiQuotaFlip(M);return;}// shared quota: ghosts silent, living bots use the existing quota fallback
+ if(status===429||status===502)M.backoffUntil=Date.now()+4000;
+ if(status!==200||!data||typeof data.say!=='string')return;// silent on any error; data.vote is ignored (ghosts never vote)
+ const say=cleanSay(data.say);if(!say||b.alive)return;
+ const gl=M.lines.slice(0,M.shown).filter(l=>l.ghost),own=[...gl].reverse().find(l=>l.who===b.id);if((own&&isEcho(say,own.text))||gl.slice(-12).some(l=>isEcho(say,l.text)))return;
+ ghostSay(M,b,say);}// ghost channel only: never chatClaims, the epoch, claims, memories or living requests
 function updateMeeting(dt){const M=G.M;M.t+=dt;
  if(M.phase==='intro'){if(M.t>2.8){M.phase='discuss';M.t=0;M.dtimer=CFG.discTime;aiStartMeeting(M);if(M.dtimer<=0)startVote();}return;}
  ghostBotsTick(M,dt);
@@ -1734,7 +1774,7 @@ function aiBotFallback(M,b){M.aiFail++;aiUpdateStatus(M);
 async function aiCall(cr,body,ctlMs){const ctl=typeof AbortController!=='undefined'?new AbortController():null;const to=setTimeout(()=>{if(ctl)ctl.abort();},ctlMs);let status=0,data=null;
  try{const r=await fetch(AI_URL(cr.code),{method:'POST',headers:{'content-type':'application/json','x-host-token':cr.tok},body,signal:ctl?ctl.signal:undefined});status=r.status;data=await r.json().catch(()=>null);}catch(e){status=-1;}clearTimeout(to);return{status,data};}
 async function aiNext(M){if(G.M!==M||!M.aiQueue||!M.aiQueue.length){if(M)M.aiChain=false;return;}if(M.phase!=='discuss'&&M.phase!=='vote'||!M.aiOn){M.aiChain=false;return;}
- M.aiChain=true;
+ M.aiChain=true;if(M.gChain){setTimeout(()=>aiNext(M),400);return;}
  const wait=Math.max(0,AI.lastAt+3500-Date.now(),(AI.lastEnd||0)+2100-Date.now(),(M.backoffUntil||0)-Date.now());if(wait){setTimeout(()=>aiNext(M),wait);return;}
  const b=G.agents[M.aiQueue.shift()];if(!b||!b.alive){aiNext(M);return;}
  let cr=M.aiDead?null:aiCreds();if(!cr&&!NET.role&&!M.aiDead){await aiSoloRefresh();cr=aiCreds();if(!cr)M.aiDead=true;}
