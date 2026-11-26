@@ -629,7 +629,7 @@ function botEvidence(b){const A=G.agents;let best=null,score=0;
  for(const v of b.ventSaw){if(v.t<G.lastMeetT||!A[v.id].alive)continue;const s0=G.engCount>0?35:70;if(s0>score){score=s0;best=`I called this meeting: I saw ${A[v.id].name} come out of a vent in ${v.room}.`+(G.engCount?` ${A[v.id].name}, are you the Engineer?`:'');}}
  for(const w of b.witness){if(w.t<G.lastMeetT||!A[w.killer].alive)continue;if(130>score){score=130;best=`I called this meeting: I SAW ${A[w.killer].name} KILL ${A[w.victim].name} in ${w.room}!`;}}
  return{score,reason:best};}
-function botBell(b,dt){b.evT=(b.evT||0)-dt;if(b.evT<=0&&!b.wantBell){b.evT=2;const e=botEvidence(b);if(e.score>=60&&!(b.aiPlan&&b.aiPlan.call==='never'&&G.t<=b.aiPlan.until))b.wantBell=e.reason;}
+function botBell(b,dt){b.evT=(b.evT||0)-dt;if(b.evT<=0&&!b.wantBell){b.evT=2;const e=botEvidence(b);if(e.score>=60&&!aiActive(b))b.wantBell=e.reason;}// while AI-driven the bell comes from the model (saw_kill / saw_vent / plan)
  if(!b.wantBell||b.meetingsLeft<=0)return false;if(G.sab||G.buttonCD>0)return false;
  if(dist(b.x,b.y,BELL.x,BELL.y)<45){b.meetingsLeft--;b.callReason=b.wantBell;b.wantBell=null;callMeeting('button',b,null);return true;}
  if(b.goalTag!=='bell'||!b.path.length){goTo(b,BELL.x,BELL.y+40);b.goalTag='bell';if(!b.path.length){b.wantBell=null;return false;}}follow(b,dt,BOTSPD*1.05);return true;}
@@ -648,9 +648,11 @@ function ghostRoutine(b,dt){if(b.role==='guardian'&&!b.imp){b.abCD-=dt;if(b.abCD
  if(!b.cur){const left=b.imp?[]:b.tasks.filter(t=>!t.done);if(left.length){const t=pick(left);b.cur={x:t.x,y:t.y,dur:t.dur,task:t};}else{b.cur={x:rand(40,WW-40),y:rand(60,WH-40),dur:rand(2,6)};}b.path=[{x:b.cur.x,y:b.cur.y}];}
  if(follow(b,dt,BOTSPD*0.9))b.wait=b.cur.dur;}
 function taskRoutine(b,dt,ghost){
+ if(!ghost&&b.aiPend&&b.thinkUntil&&G.t<b.thinkUntil){b.moving=false;b.walk+=dt;return;}
  if(b.wait>0){b.wait-=dt;b.moving=false;b.walk+=dt*2;
   if(b.vis==='guns'&&!ghost){b.visT-=dt;if(b.visT<=0){b.visT=rand(0.35,0.7);worldShot();}}
   if(b.wait<=0&&b.cur){if(b.cur.task){b.cur.task.done=true;if(!b.imp){G.tasksDone++;if(!ghost&&b.tasks.every(t=>t.done))aiEvent(b,'tasks_done','You just finished all your tasks.');}}b.cur=null;b.vis=null;}return;}
+ if(!b.cur&&!ghost&&aiActive(b)&&!b.aiPend){if(aiEvent(b,'choose_goal','Choose what to do next.',goalOpts(b))){b.thinkUntil=G.t+6;b.moving=false;return;}}
  if(!b.cur){const left=b.tasks.filter(t=>!t.done);
   if(!left.length&&ghost)return;
   if(!left.length||(!ghost&&Math.random()<0.38)){const s=pick(BOTSPOTS);b.cur={x:s.x,y:s.y,dur:rand(1.5,5)};}
@@ -667,6 +669,13 @@ function impUpdate(b,dt){
  if(b.selfRep){b.selfRep.t-=dt;if(b.selfRep.t<=0){const bd=b.selfRep.body;if(!bd.reported){if(dist(b.x,b.y,bd.x,bd.y)<55){b.selfRep=null;callMeeting('body',b,bd);return true;}if(!b.path.length||b.goalTag!=='rep'){goTo(b,bd.x,bd.y);b.goalTag='rep';if(!b.path.length){b.selfRep=null;return false;}}follow(b,dt);return true;}b.selfRep=null;}}
  if(b.state==='vent'){if(b.goalTag!=='vent'){b.state='normal';}else if(follow(b,dt)){ventWitness(b,b.ventFrom);b.x=b.ventTo.x;b.y=b.ventTo.y;ventWitness(b,b.ventTo);const far=BOTSPOTS.filter(q=>dist(q.x,q.y,b.x,b.y)>200);const q=pick(far.length?far:BOTSPOTS);goTo(b,q.x,q.y);b.goalTag='flee';b.state='flee';}return true;}
  if(b.state==='flee'){if(b.goalTag!=='flee'||!b.path.length){if(follow(b,dt)||b.goalTag!=='flee'){b.state='normal';b.cur=null;b.path=[];}}else follow(b,dt);return true;}
+ if(aiActive(b)){
+  if(!G.sab&&G.sabCD<=0&&!b.aiPend&&(b.sabAsk==null||G.t-b.sabAsk>30)){b.sabAsk=G.t;aiEvent(b,'sabotage_ready','You can start a sabotage now.',['sabotage:melt','sabotage:o2','not_now']);}
+  if(b.aiKill){const v=G.agents[b.aiKill.id];if(!v||!v.alive||v.imp||G.t>b.aiKill.until){b.aiKill=null;}
+   else{if(G.killCD<=0&&v.inVent==null&&dist(b.x,b.y,v.x,v.y)<Math.max(22,killRange()*0.6)){b.afterKill=b.aiKill.after;b.aiKill=null;doKill(b,v,witnessesOf(b,v));return true;}// legality re-checked at the moment of acting
+    b.repathT-=dt;if(b.repathT<=0||!b.path.length||b.goalTag!=='hunt'){b.repathT=0.6;goTo(b,v.x,v.y);b.goalTag='hunt';}follow(b,dt,BOTSPD*1.05);return true;}}
+  if(G.killCD<=0&&!b.aiPend){const ts=killTargets(b);if(ts.length){const opts=ts.slice(0,3).map(a=>'kill:'+a.name);opts.push('wait');aiEvent(b,'kill_chance',`You can kill now. Nearby: ${ts.slice(0,3).map(a=>a.name+' ('+Math.round(dist(b.x,b.y,a.x,a.y))+' away)').join(', ')}. Others who could see you: ${G.agents.filter(o=>o!==b&&o.alive&&!o.imp&&sees(o,b)).map(o=>o.name).join(', ')||'nobody'}. If you kill, you may add "after":"vent" or "walk_away".`,opts);}}
+  return false;}// the model decides; while it thinks, the bot keeps up its alibi (task routine)
  if(!G.sab&&G.sabCD<=0&&Math.random()<dt*0.035)startSab(Math.random()<0.5?'melt':'o2');
  if(G.killCD<=0){
   b.huntT+=dt;b.scanT-=dt;
@@ -690,7 +699,7 @@ function doKill(k,v,wn){
  const body={id:v.id,x:v.x,y:v.y,col:v.col,t:G.t,reported:false};G.bodies.push(body);
  const room=placeName(v.x,v.y);G.deaths.push({victim:v.id,killer:k.id,t:G.t,room});
  k.huntT=0;k.target=null;
- for(const w of G.agents){if(w.human||w.imp||!w.alive||w===k||w===v)continue;if(canSee(w,k)&&canSee(w,{x:body.x,y:body.y,inVent:null})){w.witness.push({killer:k.id,victim:v.id,t:G.t,room});w.reportBody=body;}}
+ for(const w of G.agents){if(w.human||w.imp||!w.alive||w===k||w===v)continue;if(canSee(w,k)&&canSee(w,{x:body.x,y:body.y,inVent:null})){w.witness.push({killer:k.id,victim:v.id,t:G.t,room});aiOnSawKill(w,k,v,room);w.reportBody=body;}}
  k.lunge=0.22;k.lx=k.x;k.ly=k.y;k.x=v.x;k.y=v.y;k.face=v.x>=k.lx?1:-1;
  const p=G.player;
  for(const h of G.agents)if(h.remote&&h!==v&&h!==k&&h.alive&&(canSee(h,v)||canSee(h,{x:k.lx,y:k.ly,inVent:null})))sendTo(h.remote,{k:'killfx',x:v.x,y:v.y});
@@ -702,11 +711,11 @@ function doKill(k,v,wn){
  if(k.remote){k.kcd=KILL_CD;sendPriv(k);return;}
  G.killCD=KILL_CD;
  const nv=VENTS.filter(o=>dist(o.x,o.y,k.x,k.y)<110).sort((a,b)=>dist(a.x,a.y,k.x,k.y)-dist(b.x,b.y,k.x,k.y))[0];
- if(nv&&Math.random()<0.6){k.state='vent';k.ventFrom=nv;k.ventTo=pick(ventLinks(nv));goTo(k,nv.x,nv.y);k.goalTag='vent';}
+ const af=k.afterKill;k.afterKill=null;if(nv&&(af==='vent'||(af==null&&Math.random()<0.6))){k.state='vent';k.ventFrom=nv;k.ventTo=pick(ventLinks(nv));goTo(k,nv.x,nv.y);k.goalTag='vent';}
  else{const far=BOTSPOTS.filter(s=>dist(s.x,s.y,v.x,v.y)>380);const s=pick(far.length?far:BOTSPOTS);goTo(k,s.x,s.y);k.goalTag='flee';k.state='flee';}
- if(Math.random()<0.1)k.selfRep={t:rand(3,6),body};
+ if(!aiActive(k)&&Math.random()<0.1)k.selfRep={t:rand(3,6),body};
 }
-function ventWitness(k,v){v.open=0.5;if(G.player&&(k.isPlayer||canSee(G.player,{x:v.x,y:v.y,inVent:null})))SND.play('vent');const keep=k.inVent;k.inVent=null;for(const a of G.agents){if(a===k||!a.alive||a.human||a.imp)continue;if(canSee(a,k)){a.ventSaw.push({id:k.id,t:G.t,room:placeName(v.x,v.y)});}}k.inVent=keep;}
+function ventWitness(k,v){v.open=0.5;if(G.player&&(k.isPlayer||canSee(G.player,{x:v.x,y:v.y,inVent:null})))SND.play('vent');const keep=k.inVent;k.inVent=null;for(const a of G.agents){if(a===k||!a.alive||a.human||a.imp)continue;if(canSee(a,k)){a.ventSaw.push({id:k.id,t:G.t,room:placeName(v.x,v.y)});aiOnSawVent(a,k,placeName(v.x,v.y));}}k.inVent=keep;}
 function startSab(type){if(G.sab)return;const pts=SABPTS[type].map((p,i)=>{const s=snap(p.x,p.bottom?p.y-16:p.y+18);return{x:p.x,y:p.y,sx:s.x,sy:s.y,label:p.label,fixed:false,idx:i,bottom:p.bottom};});
  G.sab={type,t:45,pts,code:String(randi(10000,99999)),playerHold:-1,assignT:rand(1.5,3),reassT:0,holdT:0};G.alarmT=1.0;SND.play('sabStart');
  for(const a of G.agents){a.sabJob=null;a.sabWork=0;}}
@@ -735,10 +744,10 @@ function memoryTick(a,dt){
  a.sightT-=dt;if(a.sightT>0)return;a.sightT=0.35;
  const seen=[];for(const o of G.agents){if(o===a||!o.alive)continue;if(sees(a,o)){seen.push([o.id,placeName(o.x,o.y)]);if(o.vis&&!a.imp&&!a.visual.some(v=>v.id===o.id&&v.t>G.lastMeetT))a.visual.push({id:o.id,t:G.t,type:o.vis,room:placeName(o.x,o.y)});}}
  a.snaps.push({t:G.t,room:placeName(a.x,a.y),seen});if(a.snaps.length>700)a.snaps.splice(0,150);
- for(const bd of G.bodies)if(!bd.reported&&sees(a,bd)&&!(a.bodyFound&&a.bodyFound[bd.id])){recordBodyFound(a,bd);const f=a.bodyFound[bd.id];aiEvent(a,'body_found',`You just found ${G.agents[bd.id].name}'s body in ${f.room}.`+(f.near.length?' Near it: '+f.near.map(z=>G.agents[z.id].name).join(', ')+'.':' Nobody else was near it.'));}
- if(a.aiBeliefs&&aiExtOn()){const top=a.aiBeliefs.filter(x=>x.sus>=60&&G.agents[x.id].alive).sort((x,y)=>y.sus-x.sus)[0];if(top&&seen.length===1&&seen[0][0]===top.id&&seen[0][1]===placeName(a.x,a.y))aiEvent(a,'alone_with_suspect',`You are alone with ${G.agents[top.id].name} in ${seen[0][1]}, the player you suspect most.`);}
- if(!a.imp&&!a.reportBody){for(const bd of G.bodies){if(!bd.reported&&sees(a,bd)){a.reportBody=bd;a.path=[];break;}}}
- else if(a.imp&&!a.selfRep&&Math.random()<0.04){for(const bd of G.bodies){if(!bd.reported&&sees(a,bd)&&G.deaths.find(d=>d.victim===bd.id&&d.killer!==a.id)){a.selfRep={t:rand(1,3),body:bd};break;}}}
+ for(const bd of G.bodies)if(!bd.reported&&sees(a,bd)&&!(a.bodyFound&&a.bodyFound[bd.id])){recordBodyFound(a,bd);const f=a.bodyFound[bd.id];if(aiActive(a)&&aiEvent(a,'body_found',`You just found ${G.agents[bd.id].name}'s body in ${f.room}.`+(f.near.length?' Near it: '+f.near.map(z=>G.agents[z.id].name).join(', ')+'.':' Nobody else was near it.'),['report','stay_quiet']))(a.bodyDec=a.bodyDec||{})[bd.id]='pending';}
+ if(aiActive(a)){const here=placeName(a.x,a.y),w=seen.filter(z=>z[1]===here);if(w.length===1){if(a.aloneWith!==w[0][0]){a.aloneWith=w[0][0];aiEvent(a,'alone_with',`You are alone with ${G.agents[w[0][0]].name} in ${here}.`,goalOpts(a));}}else a.aloneWith=null;}// raw event, no suspicion threshold
+ if(!a.imp&&!a.reportBody){for(const bd of G.bodies){if(!bd.reported&&sees(a,bd)){if(a.bodyDec&&a.bodyDec[bd.id])continue;a.reportBody=bd;a.path=[];break;}}}// the model's report/stay-quiet choice wins while it is AI-driven
+ else if(a.imp&&!a.selfRep&&!aiActive(a)&&Math.random()<0.04){for(const bd of G.bodies){if(!bd.reported&&sees(a,bd)&&G.deaths.find(d=>d.victim===bd.id&&d.killer!==a.id)){a.selfRep={t:rand(1,3),body:bd};break;}}}
 }
 function roomsIn(a,t0,t1){const s=[];for(const e of a.trail)if(e.t>=t0&&e.t<=t1&&!s.includes(e.room))s.push(e.room);if(!s.length&&a.trail.length)s.push(a.trail[a.trail.length-1].room);return s;}
 function sightingsOf(b,id,t0,t1){const r=[];for(const s of b.snaps){if(s.t<t0||s.t>t1)continue;for(const q of s.seen)if(q[0]===id)r.push({t:s.t,room:q[1],with:s.seen.filter(z=>z[0]!==id&&z[1]===q[1]).map(z=>z[0])});}return r;}
@@ -1442,7 +1451,7 @@ function act(data){return netSend({type:'event',data});}
 function sendTo(cid,data){if(isHost()&&cid)netSend({type:'event',to:cid,data});}
 function cleanName(v){return String(v||'').replace(/[^A-Za-z0-9 _-]/g,'').trim().slice(0,12)||'Player';}
 function cleanCode(v){return String(v||'').replace(/[^A-Za-z0-9_-]/g,'').toUpperCase().slice(0,32);}
-function newCode(){const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let x='';for(let i=0;i<6;i++)x+=A[Math.floor(Math.random()*A.length)];return x;}
+function newCode(){if(typeof AI!=='undefined'&&AI.testCode)return AI.testCode;const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let x='';for(let i=0;i<6;i++)x+=A[Math.floor(Math.random()*A.length)];return x;}
 function netConnect(role,code,name){netClose();NET.closing=false;NET.role=role;NET.code=code;NET.name=name;NET.players=[];NET.status='Connecting…';NET.err='';NET.seq=0;NET.retries=0;NET.inGame=false;enterLounge({solo:false});openSocket();}
 function openSocket(){let ws;try{ws=new WebSocket(RELAY_WS+encodeURIComponent(NET.code)+'/ws');}catch(e){NET.err='Could not open a connection.';return;}NET.ws=ws;NET.lastRx=Date.now();NET.stuckT=0;
  ws.onmessage=e=>{NET.lastRx=Date.now();let m;try{m=JSON.parse(e.data);}catch(_){return;}try{onNet(m);}catch(err){console.error(err);}};
@@ -1637,7 +1646,7 @@ function aiSoloRoom(done){if(NET.role){if(done)done(null);return;}if(AI.ws&&AI.w
  // join (or rejoin) the private solo room as host. The relay issues a fresh token on every 'joined';
  // a token is never reused across a socket close (the room clears and the old token 401s).
  if(AI.ws){const old=AI.ws;AI.ws=null;try{old.close();}catch(_){}}
- if(!AI.code)AI.code='KSOLO'+Math.random().toString(36).slice(2,10).toUpperCase();AI.tok=null;
+ if(!AI.code)AI.code=AI.testCode||('KSOLO'+Math.random().toString(36).slice(2,10).toUpperCase());AI.tok=null;
  try{const ws=new WebSocket(RELAY_WS+AI.code+'/ws');AI.ws=ws;
   ws.onmessage=e=>{let m;try{m=JSON.parse(e.data);}catch(_){return;}if(m.type==='welcome')ws.send(JSON.stringify({type:'hello',role:'host',name:'solo'}));if(m.type==='joined'&&AI.ws===ws){AI.tok=m.hostToken||null;if(done){const d=done;done=null;d(AI.tok);}}if(m.type==='error'&&done){const d=done;done=null;d(null);}};
   ws.onclose=()=>{if(AI.ws===ws){AI.ws=null;AI.tok=null;}if(done){const d=done;done=null;d(null);}};ws.onerror=()=>{};}
@@ -1808,9 +1817,11 @@ async function aiCall(cr,body,ctlMs){const ctl=typeof AbortController!=='undefin
 // opt-in: `ext` is sent only after the worker has advertised caps:['plan'] in a reply. Today's worker never does, so the
 // client behaves exactly as before (same requests, same calls). Validation is structural only.
 const AIX={ROUND_CAP:10,BOT_ROUND:2,COOLDOWN:25,MEET_CAP:14,PLAN_TTL:90,DEC_TTL:60};
+AI.testCode=(()=>{try{const m=/[?&]aitest=([A-Z0-9]{4,12})\b/.exec(location.search||'');return m?m[1]:null;}catch(_){return null;}})();
 AI.caps=null;AI.dq=[];AI.dec=null;AI.decChain=false;AI.decInflight=null;AI.stat={};AI.extStats={ok:0,bad:0};
 function aiExtOn(){return !!(AI.caps&&AI.caps.includes('plan'))&&!aiQuotaActive();}
-function aiNoteCaps(data){if(data&&Array.isArray(data.caps))AI.caps=data.caps.filter(x=>typeof x==='string').slice(0,8);}
+function aiNoteCaps(data){if(!AI.testCode)return;// a capability advertisement is ignored unless this page opted in (?aitest=CODE)
+ if(data&&Array.isArray(data.caps))AI.caps=data.caps.filter(x=>typeof x==='string').slice(0,8);}
 function aiValidPlan(b,p){if(!p||typeof p!=='object'||Array.isArray(p))return null;const A=G.agents;
  const nm=v=>{if(v==null||v==='')return null;if(typeof v!=='string')return undefined;const a=A.find(q=>q.name===v);return a&&a.alive&&a!==b?a.id:undefined;};
  const out={avoid:nm(p.avoid),follow:nm(p.follow),check:null,call:'evidence'};if(out.avoid===undefined||out.follow===undefined)return null;
@@ -1822,7 +1833,7 @@ function aiValidBeliefs(b,list){if(!Array.isArray(list))return null;const A=G.ag
   out.push({id:a.id,sus:Math.round(v),why:typeof e.why==='string'?cleanSay(e.why).slice(0,120):''});}return out;}
 function aiApplyExt(b,data,ctx){if(data.plan!==undefined){const pl=aiValidPlan(b,data.plan);if(pl){if(ctx==='meeting')b.aiPlanNext=pl;else b.aiPlan=Object.assign(pl,{until:G.t+AIX.DEC_TTL,src:'event'});AI.extStats.ok++;}else AI.extStats.bad++;}
  if(data.beliefs!==undefined){const bl=aiValidBeliefs(b,data.beliefs);if(bl){b.aiBeliefs=bl;AI.extStats.ok++;}else AI.extStats.bad++;}}
-function aiPlanStart(){for(const b of G.agents){if(b.human)continue;if(b.aiPlanNext&&b.alive){b.aiPlan=Object.assign(b.aiPlanNext,{until:G.t+AIX.PLAN_TTL,src:'meeting'});}b.aiPlanNext=null;b.accusedBy=null;}AI.dq=[];}
+function aiPlanStart(){for(const b of G.agents){if(b.human)continue;b.aiFail=false;b.aiPend=null;b.aiKill=null;b.thinkUntil=0;if(b.aiPlanNext&&b.alive){b.aiPlan=Object.assign(b.aiPlanNext,{until:G.t+AIX.PLAN_TTL,src:'meeting'});}b.aiPlanNext=null;b.accusedBy=null;}AI.dq=[];}
 // the plan executor: the model chose; this only walks there
 function planStep(b,dt){const P=b.aiPlan;if(!P)return false;if(G.t>P.until){b.aiPlan=null;return false;}const A=G.agents;
  if(P.call==='now'&&!b.imp&&!b.wantBell&&b.meetingsLeft>0)b.wantBell='I want to talk about what I saw.';
@@ -1832,30 +1843,54 @@ function planStep(b,dt){const P=b.aiPlan;if(!P)return false;if(G.t>P.until){b.ai
  const fo=P.follow!=null?A[P.follow]:null;if(fo&&fo.alive&&fo.inVent==null){if(P.folUntil==null)P.folUntil=G.t+30;if(G.t<P.folUntil){const d=dist(b.x,b.y,fo.x,fo.y);if(d>70){b.folT=(b.folT||0)-dt;if(b.folT<=0||b.goalTag!=='follow'||!b.path.length){b.folT=1.5;goTo(b,fo.x,fo.y);b.goalTag='follow';b.cur=null;}follow(b,dt);}else b.moving=false;return true;}}
  return false;}
 // play-time decisions: event-driven, caps checked BEFORE any call is queued
-function aiEvent(b,kind,detail){if(!aiExtOn()||G.mode!=='play'||!b||b.human||!b.alive)return false;const r=G.round||0;
- if(!AI.dec||AI.dec.round!==r)AI.dec={round:r,n:0};if(b.decRound!==r){b.decRound=r;b.decN=0;}
- if(b.decN>=AIX.BOT_ROUND||(b.decT!=null&&G.t-b.decT<AIX.COOLDOWN)||AI.dec.n+AI.dq.length>=AIX.ROUND_CAP||AI.dq.some(e=>e.b===b))return false;
- b.decN++;b.decT=G.t;AI.dq.push({b,kind,detail:String(detail).slice(0,180),round:r});AI.stat[kind]=(AI.stat[kind]||0)+1;aiDecideNext();return true;}
+const AI_IMPORTANT=new Set(['kill_chance','body_found','saw_kill','saw_vent','sabotage_ready']);
+// a bot is AI-driven unless its last call failed (this round) or the round cap is used up; then today's scripted logic runs
+function aiActive(b){if(!aiExtOn()||!b||b.human||b.aiFail)return false;const r=G.round||0;return !(AI.dec&&AI.dec.round===r&&AI.dec.n+AI.dq.length>=AIX.ROUND_CAP);}
+function aiEvent(b,kind,detail,opts){if(!aiExtOn()||G.mode!=='play'||!b||b.human||!b.alive||b.aiFail)return false;const r=G.round||0;
+ if(!AI.dec||AI.dec.round!==r)AI.dec={round:r,n:0,low:0};if(b.decRound!==r){b.decRound=r;b.decN=0;}const imp=AI_IMPORTANT.has(kind);
+ if(b.decN>=AIX.BOT_ROUND+(imp?1:0)||(b.decT!=null&&G.t-b.decT<AIX.COOLDOWN&&!imp)||AI.dec.n+AI.dq.length>=AIX.ROUND_CAP||(!imp&&AI.dec.low>=AIX.ROUND_CAP/2)||AI.dq.some(e=>e.b===b)||b.aiPend)return false;
+ if(!imp)AI.dec.low++;b.decN++;b.decT=G.t;b.aiPend={kind,t:G.t};{const ent={b,kind,detail:String(detail).slice(0,180),round:r,opts:Array.isArray(opts)?opts.slice(0,12):null,imp};if(imp){const i=AI.dq.findIndex(q=>!q.imp);if(i<0)AI.dq.push(ent);else AI.dq.splice(i,0,ent);}else AI.dq.push(ent);}/* important decisions go ahead of routine ones */AI.stat[kind]=(AI.stat[kind]||0)+1;aiDecideNext();return true;}
 function aiDecideBody(b,e){const A=G.agents,PM={alibi:{},w0:G.lastMeetT||0,w1:G.t,death:null,td:G.t,claims:[],lines:[],shown:0,kind:'play',round:G.round,caller:null,body:null};
  const C=memClasses(b,PM);C.key.unshift('EVENT: '+e.detail);
- const body={botId:b.name,meeting:{phase:'play',round:G.round||1,accused:'',dead:A.filter(a=>!a.alive).map(a=>a.name)},memories:[],chat:[],targets:A.filter(a=>a.alive&&a!==b).map(a=>a.name),ext:{v:1,want:['beliefs','plan'],event:e.kind}};
+ const body={botId:b.name,meeting:{phase:'play',round:G.round||1,accused:'',dead:A.filter(a=>!a.alive).map(a=>a.name)},memories:[],chat:[],targets:A.filter(a=>a.alive&&a!==b).map(a=>a.name),ext:{v:1,want:e.opts?['beliefs','plan','act']:['beliefs','plan'],event:e.kind}};if(e.opts)body.ext.options=e.opts;
  return packBody(body,C);}
 async function aiDecideNext(){try{await aiDecideNext0();}catch(e){console.error(e);AI.decChain=false;AI.decInflight=null;}}// an exception never wedges the queue
 async function aiDecideNext0(){if(AI.decChain||!AI.dq.length)return;if(G.mode!=='play'){AI.dq=[];return;}AI.decChain=true;
  const wait=Math.max(0,AI.lastAt+3500-Date.now(),(AI.lastEnd||0)+2100-Date.now(),(AI.decBackoff||0)-Date.now());if(wait){setTimeout(()=>{AI.decChain=false;aiDecideNext();},wait);return;}
- const e=AI.dq.shift(),b=e.b;if(!b.alive||G.mode!=='play'||!aiExtOn()||e.round!==(G.round||0)){AI.decChain=false;aiDecideNext();return;}
- const cr=aiCreds();if(!cr){AI.decChain=false;b.aiFail=true;return;}
- if(AI.dec.n>=AIX.ROUND_CAP){AI.decChain=false;AI.dq=[];return;}AI.dec.n++;
+ const e=AI.dq.shift(),b=e.b;if(!b.alive||G.mode!=='play'||!aiExtOn()||e.round!==(G.round||0)){b.aiPend=null;AI.decChain=false;aiDecideNext();return;}
+ const cr=aiCreds();if(!cr){AI.decChain=false;b.aiFail=true;b.aiPend=null;return;}
+ if(AI.dec.n>=AIX.ROUND_CAP){AI.decChain=false;for(const q of AI.dq)q.b.aiPend=null;AI.dq=[];b.aiPend=null;return;}AI.dec.n++;
  const body=aiDecideBody(b,e);AI.lastAt=Date.now();AI.decInflight=b.id;
  const {status,data}=await aiCall(cr,body,12000);AI.lastEnd=Date.now();AI.decInflight=null;AI.log.push({bot:b.name,decide:e.kind,status,bytes:byteLen(body),t:Date.now()});if(AI.log.length>200)AI.log.splice(0,AI.log.length-200);AI.decChain=false;
- if(data&&data.error==='ai_quota'){AI.quotaUntil=nextUtcMidnight();AI.dq=[];return;}// quota: no more calls; plans run out, then scripted
+ b.aiPend=null;
+ if(data&&data.error==='ai_quota'){AI.quotaUntil=nextUtcMidnight();for(const q of AI.dq)q.b.aiPend=null;AI.dq=[];return;}// quota: no more calls; plans run out, then scripted
  if(status===429||status===502)AI.decBackoff=Date.now()+4000;
  if(status!==200||!data){b.aiFail=true;aiDecideNext();return;}// this bot only: keeps its last plan until it expires
- aiNoteCaps(data);b.aiFail=false;if(G.mode==='play'&&e.round===(G.round||0)&&b.alive)aiApplyExt(b,data,'play');aiDecideNext();}
+ aiNoteCaps(data);if(G.mode==='play'&&e.round===(G.round||0)&&b.alive){aiApplyExt(b,data,'play');if(e.opts)aiAct(b,e,data);}aiDecideNext();}
 // meeting: an accused bot is moved to the front of the queue (once per meeting), within the meeting cap
 function aiOnAccuse(M,text,spId){if(!aiExtOn()||!M||!M.aiOn)return;const low=String(text).toLowerCase();if(!RX_ACC.test(low)||RX_VOUCH.test(low))return;const A=G.agents;
  const t=A.find(a=>a.id!==spId&&!a.human&&a.alive&&new RegExp('\\b'+a.name.toLowerCase()+'\\b').test(low));if(!t)return;M.accQ=M.accQ||{};if(M.accQ[t.id]||(M.aiCalls||0)>=AIX.MEET_CAP)return;
  M.accQ[t.id]=1;t.accusedBy={round:M.round,by:A[spId]?A[spId].name:'someone',text:String(text).slice(0,140)};M.aiQueue=(M.aiQueue||[]).filter(id=>id!==t.id);M.aiQueue.unshift(t.id);AI.stat.accused=(AI.stat.accused||0)+1;if(!M.aiChain)aiNext(M);}
+// ===== decision points: the code lists only legal options; the model picks one; the code re-checks legality when acting =====
+function roomOpts(b,n){return ROOMS.slice().sort((x,y)=>dist(b.x,b.y,x.x+x.w/2,x.y+x.h/2)-dist(b.x,b.y,y.x+y.w/2,y.y+y.h/2)).slice(0,n).map(r=>'go:'+r.name);}
+function goalOpts(b){const o=[];const rooms=[...new Set(b.tasks.filter(t=>!t.done).map(t=>placeName(t.x,t.y)))];for(const r of rooms.slice(0,4))o.push('task:'+r);
+ o.push(...roomOpts(b,4));for(const a of G.agents)if(a!==b&&a.alive&&a.inVent==null&&sees(b,a)){o.push('follow:'+a.name);o.push('avoid:'+a.name);if(o.length>=12)break;}o.push('wander');return [...new Set(o)].slice(0,12);}
+function killTargets(b){return G.agents.filter(a=>a!==b&&a.alive&&!a.imp&&a.inVent==null&&sees(b,a)&&dist(b.x,b.y,a.x,a.y)<160);}
+function aiAct(b,e,data){const act=data.act;AI.extStats.acts=(AI.extStats.acts||0)+1;
+ if(typeof act!=='string'||!e.opts.includes(act)){AI.extStats.badAct=(AI.extStats.badAct||0)+1;if(e.kind==='body_found'&&b.bodyDec)for(const k in b.bodyDec)if(b.bodyDec[k]==='pending')delete b.bodyDec[k];return;}// not one of the offered legal options
+ const i=act.indexOf(':'),verb=i<0?act:act.slice(0,i),arg=i<0?'':act.slice(i+1),A=G.agents,ag=n=>A.find(a=>a.name===n&&a.alive);b.lastAct=act;
+ if(verb==='task'){const t=b.tasks.find(t=>!t.done&&placeName(t.x,t.y)===arg);if(t){b.cur={x:t.x,y:t.y,dur:t.dur,task:t};goTo(b,t.x,t.y);b.goalTag='task';}}
+ else if(verb==='go'){const r=ROOMS.find(R=>R.name===arg);if(r){const q=snap(r.x+r.w/2,r.y+r.h/2);b.cur={x:q.x,y:q.y,dur:rand(1.5,4)};goTo(b,q.x,q.y);b.goalTag='task';}}
+ else if(verb==='follow'||verb==='avoid'){const t=ag(arg);if(t)b.aiPlan=Object.assign(b.aiPlan&&G.t<=b.aiPlan.until?b.aiPlan:{avoid:null,follow:null,check:null,call:'evidence'},{[verb]:t.id,until:G.t+AIX.DEC_TTL});}
+ else if(verb==='kill'){const t=ag(arg);if(t)b.aiKill={id:t.id,until:G.t+12,after:data.after==='vent'||data.after==='walk_away'?data.after:null};}
+ else if(verb==='sabotage'){if(!G.sab&&G.sabCD<=0&&(arg==='melt'||arg==='o2'))startSab(arg);}
+ else if(verb==='report'){for(const k in (b.bodyDec||{}))if(b.bodyDec[k]==='pending'){const bd=G.bodies.find(q=>q.id===+k);delete b.bodyDec[k];if(bd&&!bd.reported){if(b.imp)b.selfRep={t:0.1,body:bd};else b.reportBody=bd;}}}
+ else if(verb==='stay_quiet'){for(const k in (b.bodyDec||{}))if(b.bodyDec[k]==='pending')b.bodyDec[k]='quiet';}
+ else if(verb==='call_meeting'){if(!b.imp&&b.meetingsLeft>0)b.wantBell=b.wantBell||'I need to tell everyone what I saw.';}
+ b.thinkUntil=0;}
+// raw salient events (no suspicion thresholds): the model decides what they mean
+function aiOnSawKill(w,k,v,room){if(aiActive(w))aiEvent(w,'saw_kill',`You just saw ${k.name} kill ${v.name} in ${room}.`,['call_meeting','keep_quiet']);}
+function aiOnSawVent(w,k,room){if(aiActive(w))aiEvent(w,'saw_vent',`You just saw ${k.name} come out of a vent in ${room}.`,['call_meeting','keep_quiet']);}
 function aiBadge(){if(!AI.caps)return '';const bots=G.agents.filter(a=>!a.human&&a.alive);const n=bots.filter(a=>a.aiPlan&&G.t<=a.aiPlan.until).length;return aiQuotaActive()?`AI unavailable: bots on automatic (${n} finishing last plans)`:`AI bots: ${n} on their own plans, ${bots.length-n} automatic`;}
 async function aiNext(M){if(G.M!==M||!M.aiQueue||!M.aiQueue.length){if(M)M.aiChain=false;return;}if(M.phase!=='discuss'&&M.phase!=='vote'||!M.aiOn){M.aiChain=false;return;}
  M.aiChain=true;if(AI.decInflight!=null){setTimeout(()=>aiNext(M),300);return;}
@@ -2121,5 +2156,5 @@ let last=performance.now();
 function frame(now){if(window.__kestrelLoop!==LOOP_ID)return;const dt=Math.min(0.05,Math.max(0,(now-last)/1000));last=now;try{update(dt);if(!overviewOn()||now-(G._ovT||0)>=32){G._ovT=now;render();}}catch(e){console.error(e);}requestAnimationFrame(frame);}
 requestAnimationFrame(frame);
 // test hooks
-window.__K={get G(){return G;},openMG,MG_wires,MG_swipe,MG_data,MG_meteors,MG_shields,MG_seq,MG_scan,MG_align,startVote,leaveGame,leaveConsequence,get LG(){return LG;},enterLounge,setMyCos,loungeUse,loungeStart,lcanStand,LSTATIONS,PAL,HATS,PANTS,get COSMAP(){return COSMAP;},aiSoloRefresh,get UI(){return UI;},AI,SND,MUSIC,aiBody,botMemories,packBody,memClasses,recordHistory,evidenceFacts,susNow,keyLines,recordBodyFound,aiValidPlan,aiValidBeliefs,aiEvent,planStep,aiBadge,aiDecideBody,cleanSay,socialNotes,clampCfg,setCfg:c=>{CFG=clampCfg(c);},get CFG(){return CFG;},CAMS,inHall,openSettings,seeAlpha,canSee,visR,filterSnap,VIS_R,NET,hostStart,buildSnap,privFor,netConnect,hostToLobby,cleanCode,susMap,botVote,skeptics,doAbility,abilityState,MG_cams,MG_vitals,seeAlpha,objective,ROLES,witnessesOf,doKill_P,ventMove,doSab,playerSay,composing,VENTS:()=>VENTS,CI,panel,tablet,newGame,update,render,callMeeting,startVote,doUse,doReport,startSab,canStand,astar,STN,TASKDEF,SABPTS,BELL,JOY,completePlayerTask,openMG,MG_wires,closeMG};
+window.__K={get G(){return G;},openMG,MG_wires,MG_swipe,MG_data,MG_meteors,MG_shields,MG_seq,MG_scan,MG_align,startVote,leaveGame,leaveConsequence,get LG(){return LG;},enterLounge,setMyCos,loungeUse,loungeStart,lcanStand,LSTATIONS,PAL,HATS,PANTS,get COSMAP(){return COSMAP;},aiSoloRefresh,get UI(){return UI;},AI,SND,MUSIC,aiBody,botMemories,packBody,memClasses,recordHistory,evidenceFacts,susNow,keyLines,recordBodyFound,aiActive,aiAct,goalOpts,killTargets,aiValidPlan,aiValidBeliefs,aiEvent,planStep,aiBadge,aiDecideBody,cleanSay,socialNotes,clampCfg,setCfg:c=>{CFG=clampCfg(c);},get CFG(){return CFG;},CAMS,inHall,openSettings,seeAlpha,canSee,visR,filterSnap,VIS_R,NET,hostStart,buildSnap,privFor,netConnect,hostToLobby,cleanCode,susMap,botVote,skeptics,doAbility,abilityState,MG_cams,MG_vitals,seeAlpha,objective,ROLES,witnessesOf,doKill_P,ventMove,doSab,playerSay,composing,VENTS:()=>VENTS,CI,panel,tablet,newGame,update,render,callMeeting,startVote,doUse,doReport,startSab,canStand,astar,STN,TASKDEF,SABPTS,BELL,JOY,completePlayerTask,openMG,MG_wires,closeMG};
 </script></body></html>
