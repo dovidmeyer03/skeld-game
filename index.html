@@ -1698,7 +1698,8 @@ function packBody(body,C){const fits=()=>{body.memories=memFlat(C);const s0=JSON
 // ===== echo guard: drop an AI line that repeats the bot's own last line or a recent public line (no extra AI calls) =====
 const ECHO_NEG=new Set(['not','no','never','nobody','didnt','wasnt','isnt','dont','cant','wont','werent','arent','hasnt','havent','nothing']);
 function echoToks(t){return String(t).toLowerCase().replace(/[’']/g,'').replace(/[^a-z0-9 ]+/g,' ').split(/\s+/).filter(Boolean);}
-function echoKey(w){if(ECHO_NEG.has(w))return true;if(G.agents&&G.agents.some(a=>a.name.toLowerCase()===w))return true;return ROOMS.some(r=>r.name.toLowerCase().split(' ').includes(w)&&w.length>3);}
+function echoKey(w){if(/\d/.test(w))return true;// a changed number or time is new evidence
+ if(ECHO_NEG.has(w))return true;if(G.agents&&G.agents.some(a=>a.name.toLowerCase()===w))return true;return ROOMS.some(r=>r.name.toLowerCase().split(' ').includes(w)&&w.length>3);}
 function isEcho(say,prev){const a=echoToks(say),b=echoToks(prev);if(!a.length||!b.length)return false;if(a.join(' ')===b.join(' '))return true;
  if(a.length<5||b.length<5)return false;const A=new Set(a),B=new Set(b);for(const w of A)if(!B.has(w)&&echoKey(w))return false;for(const w of B)if(!A.has(w)&&echoKey(w))return false;// new name/room/negation = new information
  let inter=0;for(const w of A)if(B.has(w))inter++;return inter/(A.size+B.size-inter)>=0.85;}
