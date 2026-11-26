@@ -727,6 +727,8 @@ function memoryTick(a,dt){
  a.sightT-=dt;if(a.sightT>0)return;a.sightT=0.35;
  const seen=[];for(const o of G.agents){if(o===a||!o.alive)continue;if(sees(a,o)){seen.push([o.id,placeName(o.x,o.y)]);if(o.vis&&!a.imp&&!a.visual.some(v=>v.id===o.id&&v.t>G.lastMeetT))a.visual.push({id:o.id,t:G.t,type:o.vis,room:placeName(o.x,o.y)});}}
  a.snaps.push({t:G.t,room:placeName(a.x,a.y),seen});if(a.snaps.length>700)a.snaps.splice(0,150);
+ a.bodyFound=a.bodyFound||{};for(const bd of G.bodies){if(a.bodyFound[bd.id]||bd.reported||!sees(a,bd))continue;// first sight of this body: who was near it, as this bot saw it
+  a.bodyFound[bd.id]={victim:bd.id,room:placeName(bd.x,bd.y),t:G.t,round:G.round||0,near:G.agents.filter(o=>o!==a&&o.alive&&o.inVent==null&&sees(a,o)&&dist(o.x,o.y,bd.x,bd.y)<=NEAR_BODY).map(o=>({id:o.id,d:Math.round(dist(o.x,o.y,bd.x,bd.y))}))};}
  if(!a.imp&&!a.reportBody){for(const bd of G.bodies){if(!bd.reported&&sees(a,bd)){a.reportBody=bd;a.path=[];break;}}}
  else if(a.imp&&!a.selfRep&&Math.random()<0.04){for(const bd of G.bodies){if(!bd.reported&&sees(a,bd)&&G.deaths.find(d=>d.victim===bd.id&&d.killer!==a.id)){a.selfRep={t:rand(1,3),body:bd};break;}}}
 }
@@ -1654,14 +1656,62 @@ function recordHistory(M){const A=G.agents,N=id=>A[id]?A[id].name:'?',S=G.social
  const open=[...accused].filter(id=>id!==R0.ej&&A[id]&&A[id].alive);if(open.length)out+=' Unresolved: the accusation against '+open.map(N).join(', ')+'.';
  if(!CFG.anonVotes&&R0.ej!=null){const vs=Object.keys(M.votes).filter(v=>M.votes[v]===R0.ej).map(v=>N(+v));if(vs.length)out+=` Votes for ${N(R0.ej)}: ${vs.join(', ')}.`;}
  S.pub.push({round:rd,notes:notes.slice(0,4),out});if(S.pub.length>3)S.pub.shift();
+ carryView(M);
  for(const b of A){if(b.human||!b.alive)continue;const v=M.votes[b.id];if(v===undefined)continue;b.voteHist=b.voteHist||[];let t;
   if(v==='skip')t=`In meeting ${rd} you skipped`+(R0.ej!=null?`; ${N(R0.ej)} was ejected.`:open.length?'; the accusation was not resolved.':'; nobody was ejected.');
   else{t=`In meeting ${rd} you voted for ${N(v)}; `+(R0.ej===v?`${N(v)} was ejected`+(CFG.confirmEjects?(A[v].imp?' and was confirmed a Saboteur.':' and was confirmed NOT a Saboteur.'):'.'):`${N(v)} was not ejected.`);
    const own=said.find(l=>{if(l.who!==b.id)return false;const lw=String(l.text).toLowerCase();return new RegExp('\\b'+A[v].name.toLowerCase()+'\\b').test(lw)&&RX_ACC.test(lw)&&!RX_VOUCH.test(lw);});/* reason only from an actual accusation of that target */if(own){const q=String(own.text).trim();t+=` You had said: "${q.length>80?q.slice(0,78)+'…':q}"`;}}
   b.voteHist.push(t);if(b.voteHist.length>3)b.voteHist.shift();
   b.contraHist=b.contraHist||[];for(const c of M.claims)if(c.sp===b.id&&c.type==='contra'&&!b.contraHist.some(x=>x.target===c.target&&x.round===rd))b.contraHist.push({target:c.target,round:rd});if(b.contraHist.length>3)b.contraHist.splice(0,b.contraHist.length-3);}}
-// classes: role (never trimmed) | now (this meeting) | hard (own kill-witness, own visual) | unc | vote | pub | sight
-function memClasses(b,M){const A=G.agents,N=id=>A[id]?A[id].name:'?',since=G.lastMeetT,C={role:[],now:[],hard:[],unc:[],vote:[],pub:[],sight:[]};
+// ===== bot evidence + suspicion (client-only, no extra AI calls) =====
+// Every fact comes from this bot's own sight records (snapshots, body sightings, witness/vent/visual logs) or from lines
+// actually spoken in the public chat. Never another bot's memories, never unspoken internal claims.
+const NEAR_BODY=80,SUS_W={body1:45,body:20,alone:35,alibi:30,witness:100,vent:40,visual:-100,acc:6,vouch:-6};
+function bvRoom(low){let r=null;for(const R of ROOMS){const n=R.name.toLowerCase();if(low.includes(n)&&(!r||n.length>r.name.length))r=R;}return r;}
+function evidenceFacts(b,M){const A=G.agents,N=id=>A[id]?A[id].name:'?',out=[],since=G.lastMeetT||0;
+ const rep=M.kind==='body'&&M.caller?M.caller.id:null,repV=M.kind==='body'&&M.body?M.body.id:null;
+ const rd=(G.round||1)-(G.mode==='meeting'?1:0);// bodies found during the play phase right before this meeting
+ for(const k in (b.bodyFound||{})){const f=b.bodyFound[k];if(f.round!==rd)continue;
+  // never name yourself, and never name the reporter as suspicious just for finding that body
+  const near=f.near.filter(z=>z.id!==b.id&&A[z.id]&&!(z.id===rep&&f.victim===repV));const V=N(f.victim);
+  if(!near.length)out.push({k:'body',ids:[],t:`When you found ${V}'s body in ${f.room}, nobody else was near it.`});
+  else if(near.length===1)out.push({k:'body',ids:[near[0].id],v:f.victim,t:`When you found ${V}'s body in ${f.room}, ${N(near[0].id)} was standing ${near[0].d<=40?'right next to':'near'} it and nobody else was around.`});
+  else{const ns=near.slice().sort((x,y)=>x.d-y.d).slice(0,3);out.push({k:'body',ids:ns.map(z=>z.id),v:f.victim,t:`When you found ${V}'s body in ${f.room}, ${N(ns[0].id)} was ${ns[0].d<=40?'right next to':'near'} it`+(ns.length>1?`; ${ns.slice(1).map(z=>N(z.id)).join(' and ')} ${ns.length>2?'were':'was'} a few steps away.`:'.')});}}
+ for(const d of G.deaths){if(d.t<since)continue;let best=null;
+  for(let i=b.snaps.length-1;i>=0;i--){const sn=b.snaps[i];if(sn.t>d.t)continue;if(sn.t<d.t-25)break;const vs=sn.seen.find(z=>z[0]===d.victim);if(!vs||sn.room===vs[1])continue;
+   const others=sn.seen.filter(z=>z[0]!==d.victim&&z[1]===vs[1]&&A[z[0]]);if(others.length===1){best={x:others[0][0],room:vs[1],ago:Math.round(d.t-sn.t)};break;}}
+  if(best&&best.x!==b.id)out.push({k:'alone',ids:[best.x],v:d.victim,t:`About ${Math.max(1,best.ago)}s before ${N(d.victim)} died, you saw ${N(best.x)} alone with them in ${best.room}.`});}
+ const claimed={};for(const l of M.lines.slice(0,M.shown)){if(l.ghost||l.who<0||l.who===b.id||!A[l.who])continue;const low=String(l.text).toLowerCase();if(!RX_SELF.test(low))continue;const r=bvRoom(low);if(r)claimed[l.who]=r.name;}
+ for(const id in claimed){const q=sightingsOf(b,+id,M.w0,M.w1).filter(z=>!z.room.startsWith('the hall'));if(!q.length||q.some(z=>z.room===claimed[id]))continue;
+  out.push({k:'alibi',ids:[+id],room:q[q.length-1].room,claim:claimed[id],t:`${N(+id)} says they were in ${claimed[id]}, but you saw them in ${q[q.length-1].room} around that time.`});}
+ return out;}
+function susNow(b,M,ev){const A=G.agents,N=id=>A[id]?A[id].name:'?',S={},since=G.lastMeetT||0;
+ const add=(id,v,why)=>{id=+id;if(id===b.id||!A[id]||!A[id].alive)return;const o=S[id]||(S[id]={s:0,why:[]});o.s+=v;if(why&&!o.why.includes(why))o.why.push(why);};
+ for(const id in (b.susCarry||{})){const c=b.susCarry[id];add(id,c.s,c.why[0]);}
+ for(const e of ev){if(e.k==='body')e.ids.forEach((id,i)=>add(id,e.ids.length===1?SUS_W.body1:(i===0?SUS_W.body1-10:SUS_W.body),i===0?`was by ${N(e.v)}'s body when you found it`:`was a few steps from ${N(e.v)}'s body`));
+  if(e.k==='alone')add(e.ids[0],SUS_W.alone,`was alone with ${N(e.v)} before they died`);
+  if(e.k==='alibi')add(e.ids[0],SUS_W.alibi,`claimed ${e.claim} but you saw them in ${e.room}`);}
+ for(const w of (b.witOld||[]).concat(b.witness||[]))add(w.killer,SUS_W.witness,`you saw them kill ${N(w.victim)}`);
+ for(const v of (b.ventOld||[]).concat(b.ventSaw||[]))if(v.t>=since)add(v.id,G.engCount?SUS_W.vent/2:SUS_W.vent,'you saw them come out of a vent');
+ for(const v of (b.visual||[])){add(v.id,0,null);const o=S[v.id];if(o){o.s=Math.min(o.s,-100);o.why=['you watched them do a visual task'];}}
+ for(const l of M.lines.slice(0,M.shown)){if(l.ghost||l.who<0||l.who===b.id||!A[l.who])continue;const low=String(l.text).toLowerCase();const nm=A.filter(a=>a.id!==l.who&&new RegExp('\\b'+a.name.toLowerCase()+'\\b').test(low));if(!nm.length)continue;
+  if(RX_ACC.test(low)&&!RX_VOUCH.test(low))add(nm[0].id,SUS_W.acc,`${N(l.who)} accused them`);else if(RX_VOUCH.test(low))add(nm[0].id,SUS_W.vouch,`${N(l.who)} vouched for them`);}
+ return S;}
+function keyLines(b,M){if(b.imp)return [];const N=id=>G.agents[id]?G.agents[id].name:'?',ev=evidenceFacts(b,M),S=susNow(b,M,ev),out=ev.map(e=>e.t).slice(0,3);
+ const top=Object.entries(S).filter(([,o])=>o.s>=15).sort((x,y)=>y[1].s-x[1].s).slice(0,2);
+ if(top.length)out.push(`Your current suspicion: ${N(top[0][0])} (${top[0][1].why.slice(0,2).join('; ')})`+(top[1]?`. Next: ${N(top[1][0])} (${top[1][1].why[0]}).`:'.'));
+ const clear=Object.entries(S).filter(([,o])=>o.s<=-50).map(([id])=>N(id));if(clear.length)out.push(`You consider ${clear.slice(0,2).join(' and ')} cleared.`);
+ if(b.lastView)out.push(b.lastView);return out.slice(0,5);}
+// end of a meeting: carry this bot's own suspicion (decayed) and what it thought, said and did
+function carryView(M){const A=G.agents,N=id=>A[id]?A[id].name:'?';
+ for(const b of A){if(b.human||!b.alive||b.imp)continue;const S=susNow(b,M,evidenceFacts(b,M)),carry={};
+  for(const id in S){const o=S[id];if(Math.abs(o.s)>=10&&A[id].alive)carry[id]={s:Math.round(o.s*0.6),why:o.why.slice(0,1)};}b.susCarry=carry;
+  const top=Object.entries(S).sort((x,y)=>y[1].s-x[1].s)[0];const said=[...M.lines.slice(0,M.shown)].reverse().find(l=>l.who===b.id&&!l.ghost);const v=M.votes[b.id];
+  const parts=[];if(top&&top[1].s>=15)parts.push(`you suspected ${N(top[0])}`);if(said){const q=String(said.text).trim();parts.push(`you said: "${q.length>70?q.slice(0,68)+'…':q}"`);}if(v!==undefined)parts.push(v==='skip'?'you skipped the vote':`you voted for ${N(v)}`);
+  b.lastView=parts.length?`Last meeting ${parts.join('; ')}. If the facts now point elsewhere, change your mind and say why.`:null;}}
+// classes: role (never trimmed) | key (protected evidence + suspicion) | now (this meeting) | hard (own kill-witness, own visual) | unc | vote | pub | sight
+function memClasses(b,M){const A=G.agents,N=id=>A[id]?A[id].name:'?',since=G.lastMeetT,C={role:[],key:[],now:[],hard:[],unc:[],vote:[],pub:[],sight:[]};
+ C.key=keyLines(b,M);
  if(b.imp){C.role.push('You are secretly a Saboteur. Never reveal it; blend in and act like a crewmate.');C.role.push('Your claimed location for this meeting: '+joinRooms(M.alibi[b.id]||['the hallway'])+'.');
   const rr=roomsIn(b,M.w0,M.w1);if(rr.length)C.role.push('You actually went to '+joinRooms(rr)+' since the last meeting. Only you know this; keep any claimed alibi near the truth.');}
  else C.role.push('You are crew'+(b.role?' with the '+ROLES[b.role].name+' role':'')+'. You only know what you saw yourself.');
@@ -1684,7 +1734,7 @@ function memClasses(b,M){const A=G.agents,N=id=>A[id]?A[id].name:'?',since=G.las
  // recent own sightings, newest 6, current round first
  if(!b.imp){const seen=new Map();for(let i=b.snaps.length-1;i>=0&&seen.size<6;i--){const sn=b.snaps[i];for(const [id,room] of sn.seen)if(!seen.has(id)&&A[id]&&A[id].alive&&id!==b.id)seen.set(id,sn.t>=since?`You saw ${N(id)} in ${room} about ${Math.max(1,Math.round(G.t-sn.t))}s before the meeting.`:`You saw ${N(id)} in ${room} (${mtag(sn.t)}).`);}C.sight=[...seen.values()].reverse();}
  for(const k in C)C[k]=C[k].map(x=>String(x).slice(0,200));return C;}
-const MEM_ORDER=['role','now','hard','unc','vote','pub','sight'];
+const MEM_ORDER=['role','key','now','hard','unc','vote','pub','sight'];
 function memFlat(C){const m=[];for(const k of MEM_ORDER)m.push(...C[k]);return m;}
 function botMemories(b,M){return memFlat(memClasses(b,M));}
 function topAccused(M){const sc={};for(const c of M.claims)if(['accuse','witness','contra','vent','tracked'].includes(c.type)&&!(M.aiOn&&c.type==='contra'))sc[c.target]=(sc[c.target]||0)+1;let best=null,bv=0;for(const k in sc)if(sc[k]>bv){bv=sc[k];best=+k;}return best==null?'':G.agents[best].name;}
@@ -1693,11 +1743,11 @@ function aiBody(b,M){const A=G.agents;const C=memClasses(b,M);const body={botId:
  return packBody(body,C);}
 // 4000-byte budget. Order: oldest chat down to 6 lines; then round-robin oldest public note / oldest own sighting;
 // then remaining chat; then uncertain, own votes, this-meeting notes, oldest hard evidence. Role lines are never trimmed.
-function packBody(body,C){const fits=()=>{body.memories=memFlat(C);const s0=JSON.stringify(body);return byteLen(s0)<=4000?s0:null;};let str=fits();let rr=0;
+function packBody(body,C){for(const k of MEM_ORDER)C[k]=C[k]||[];const fits=()=>{body.memories=memFlat(C);const s0=JSON.stringify(body);return byteLen(s0)<=4000?s0:null;};let str=fits();let rr=0;
  while(!str){if(body.chat.length>6)body.chat.shift();
   else if(C.pub.length||C.sight.length){const k=(rr++%2===0)?(C.pub.length?'pub':'sight'):(C.sight.length?'sight':'pub');C[k].shift();}
   else if(body.chat.length)body.chat.shift();
-  else if(C.unc.length)C.unc.shift();else if(C.vote.length)C.vote.shift();else if(C.now.length)C.now.pop();else if(C.hard.length)C.hard.shift();
+  else if(C.unc.length)C.unc.shift();else if(C.vote.length)C.vote.shift();else if(C.now.length)C.now.pop();else if(C.hard.length)C.hard.shift();else if(C.key.length)C.key.pop();
   else{C.role=C.role.map(x=>x.slice(0,80));body.targets=body.targets.slice(0,9);str=JSON.stringify(Object.assign(body,{memories:memFlat(C)}));break;}
   str=fits();}
  return str;}
@@ -1999,5 +2049,5 @@ let last=performance.now();
 function frame(now){if(window.__kestrelLoop!==LOOP_ID)return;const dt=Math.min(0.05,Math.max(0,(now-last)/1000));last=now;try{update(dt);if(!overviewOn()||now-(G._ovT||0)>=32){G._ovT=now;render();}}catch(e){console.error(e);}requestAnimationFrame(frame);}
 requestAnimationFrame(frame);
 // test hooks
-window.__K={get G(){return G;},openMG,MG_wires,MG_swipe,MG_data,MG_meteors,MG_shields,MG_seq,MG_scan,MG_align,startVote,leaveGame,leaveConsequence,get LG(){return LG;},enterLounge,setMyCos,loungeUse,loungeStart,lcanStand,LSTATIONS,PAL,HATS,PANTS,get COSMAP(){return COSMAP;},aiSoloRefresh,get UI(){return UI;},AI,SND,MUSIC,aiBody,botMemories,packBody,memClasses,recordHistory,cleanSay,socialNotes,clampCfg,setCfg:c=>{CFG=clampCfg(c);},get CFG(){return CFG;},CAMS,inHall,openSettings,seeAlpha,canSee,visR,filterSnap,VIS_R,NET,hostStart,buildSnap,privFor,netConnect,hostToLobby,cleanCode,susMap,botVote,skeptics,doAbility,abilityState,MG_cams,MG_vitals,seeAlpha,objective,ROLES,witnessesOf,doKill_P,ventMove,doSab,playerSay,composing,VENTS:()=>VENTS,CI,panel,tablet,newGame,update,render,callMeeting,startVote,doUse,doReport,startSab,canStand,astar,STN,TASKDEF,SABPTS,BELL,JOY,completePlayerTask,openMG,MG_wires,closeMG};
+window.__K={get G(){return G;},openMG,MG_wires,MG_swipe,MG_data,MG_meteors,MG_shields,MG_seq,MG_scan,MG_align,startVote,leaveGame,leaveConsequence,get LG(){return LG;},enterLounge,setMyCos,loungeUse,loungeStart,lcanStand,LSTATIONS,PAL,HATS,PANTS,get COSMAP(){return COSMAP;},aiSoloRefresh,get UI(){return UI;},AI,SND,MUSIC,aiBody,botMemories,packBody,memClasses,recordHistory,evidenceFacts,susNow,keyLines,cleanSay,socialNotes,clampCfg,setCfg:c=>{CFG=clampCfg(c);},get CFG(){return CFG;},CAMS,inHall,openSettings,seeAlpha,canSee,visR,filterSnap,VIS_R,NET,hostStart,buildSnap,privFor,netConnect,hostToLobby,cleanCode,susMap,botVote,skeptics,doAbility,abilityState,MG_cams,MG_vitals,seeAlpha,objective,ROLES,witnessesOf,doKill_P,ventMove,doSab,playerSay,composing,VENTS:()=>VENTS,CI,panel,tablet,newGame,update,render,callMeeting,startVote,doUse,doReport,startSab,canStand,astar,STN,TASKDEF,SABPTS,BELL,JOY,completePlayerTask,openMG,MG_wires,closeMG};
 </script></body></html>
