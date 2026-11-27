@@ -993,7 +993,7 @@ function doKill_P(){const p=G.player,v=G.killT;if(!p.imp||!p.alive||!v||G.pKillC
 function ventMove(to){const p=G.player;if(p.inVent==null)return;if(isClient()){act({a:'ventmove',to});return;}const v=VENTS[to];v.open=0.4;p.inVent=to;p.x=v.x;p.y=v.y;SFX.beep(180);}
 function doSab(type){if(G.sab||G.sabCD>0||!G.player.imp)return;if(isClient()){G.sabMenu=false;act({a:'sab',t:type});return;}G.sabMenu=false;startSab(type);}
 function doReport(){if(isClient()){if(G.repT&&!G.mg&&G.player.alive)act({a:'report',id:G.repT.id});return;}if(G.repT&&!G.mg&&G.player.alive&&G.player.inVent==null)callMeeting('body',G.player,G.repT);}
-function completePlayerTask(t){if(t.done)return;setTimeout(()=>{const mine=G.player.tasks.filter(q=>!q.fake);if(mine.length&&mine.every(q=>q.done))SND.play('allTasks');},50);if(isClient()){const cur=(t.uid!=null&&G.player.tasks.find(q=>q.uid===t.uid))||t;if(cur.done)return;if(cur.uid==null){G.toast={t:2.5,text:'Task not synced yet. Try again.'};return;}act({a:'task',u:cur.uid,s:cur.step});cur.pend={s:cur.step,at:G.rt,n:0};if(cur.kind==='data'&&cur.step===0){cur.step=1;G.toast={t:2,text:'Now upload it in Comms'};return;}cur.done=true;return;}if(t.kind==='data'&&t.step===0){t.step=1;G.toast={t:2,text:'Now upload it in Comms'};return;}t.done=true;G.tasksDone++;checkWin();}
+function completePlayerTask(t){if(t.done)return;setTimeout(()=>{const mine=G.player.tasks.filter(q=>!q.fake);if(mine.length&&mine.every(q=>q.done))SND.play('allTasks');},50);if(isClient()){const cur=(t.uid!=null&&G.player.tasks.find(q=>q.uid===t.uid))||t;if(cur.done)return;const ci=G.player.tasks.indexOf(cur);if(ci<0){sendResync();return;}if(cur.uid==null&&!hostIsOld()){G.toast={t:2.5,text:'Task not synced yet. Try again.'};return;}act(cur.uid==null?{a:'task',i:ci}:{a:'task',u:cur.uid,s:cur.step,i:ci});cur.pend={s:cur.step,at:G.rt,n:hostIsOld()?3:0};if(cur.kind==='data'&&cur.step===0){cur.step=1;G.toast={t:2,text:'Now upload it in Comms'};return;}cur.done=true;return;}if(t.kind==='data'&&t.step===0){t.step=1;G.toast={t:2,text:'Now upload it in Comms'};return;}t.done=true;G.tasksDone++;checkWin();}
 function releasePad(){const had=(G.sab&&G.sab.playerHold>=0)||G.padSent;if(G.sab)G.sab.playerHold=-1;if(had&&isClient())act({a:'pad',on:0});G.padSent=false;}
 
 // ================= MINIGAMES =================
@@ -1204,7 +1204,8 @@ function viewZ(){return overviewOn()?Math.min((W-SA.l-SA.r)*0.96/WW,(H-SA.t-SA.b
 function viewCam(){return overviewOn()?{x:WW/2,y:WH/2-30/viewZ()}:G.cam;}
 function w2s(x,y){const Z=viewZ(),C=viewCam();return{x:(x-C.x)*Z+W/2,y:(y-C.y)*Z+H/2};}
 function render(){CHAT_POS=null;MP_POS=null;try{renderInner();}finally{placeChat();placeMP();}}
-function renderInner(){renderScene();if(KG.open)drawKeysGuide();if(typingNow()&&(G.mode==='play'||G.mode==='lobby'))drawTypingHint();}
+function renderInner(){renderScene();if(KG.open)drawKeysGuide();if(hostIsOld()&&G.mode!=='closed')drawVersionWarn('The host is on an older version of the game. Ask them to refresh the page before the next round.');if(typingNow()&&(G.mode==='play'||G.mode==='lobby'))drawTypingHint();}
+function drawVersionWarn(s){const c=ctx;const w=Math.min(W-24,560),x=W/2-w/2,y=H-SA.b-40;rr(c,x,y,w,30,8);c.fillStyle='rgba(120,70,0,.94)';c.fill();c.strokeStyle='#ffd84a';c.lineWidth=1.5;c.stroke();const f=fitText(c,s,w-16,12,'800 ');txt(c,f.str,W/2,y+15,f.fs,'#fff3c0','center',true);}
 function drawTypingHint(){const c=ctx,s='TYPING · Enter to send · Esc or tap the game to move';c.font='800 12px system-ui,sans-serif';const w=Math.min(W-24,c.measureText(s).width+24),x=W/2-w/2,y=SA.t+70;rr(c,x,y,w,26,13);c.fillStyle='rgba(20,28,52,.92)';c.fill();c.strokeStyle='#ffd84a';c.lineWidth=1.5;c.stroke();const f=fitText(c,s,w-14,12,'800 ');txt(c,f.str,W/2,y+13,f.fs,'#ffe9a0','center',true);}
 function renderScene(){ctx.setTransform(DPR,0,0,DPR,0,0);UI.hits.length=0;UI.btns=[];ctx.fillStyle='#05060c';ctx.fillRect(0,0,W,H);
  if(G.mode==='settings')return drawSettings();if(G.mode==='mpmenu')return drawMPMenu();if(G.mode==='lobby')return drawLounge();if(G.mode==='closed')return drawClosed();
@@ -1489,6 +1490,12 @@ function drawEnd(){const c=ctx,E=G.end,L=LAND();c.fillStyle='rgba(0,0,0,.85)';c.
 
 // ================= MULTIPLAYER (host-authoritative over the relay) =================
 const RELAY_WS='wss://skeld-game-relay.dovidmeyer03.workers.dev/room/';
+/* ===== Protocol version. Bump PROTO whenever a message changes meaning; set PROTO_MIN_PEER to the oldest peer this build
+ can still play with. 1 = builds before 2026-11-27 (tasks by array index, no version handshake). 2 = task uids + handshake. */
+const PROTO=2,PROTO_MIN_PEER=1;
+/* network-derived array index: only a real in-range integer selects an element; anything else selects nothing */
+function at(arr,v){return Array.isArray(arr)&&Number.isInteger(v)&&v>=0&&v<arr.length?arr[v]:undefined;}
+function protoOf(v){return Number.isInteger(v)&&v>=1&&v<1000?v:1;}
 const NET={ws:null,role:null,code:'',name:'',myId:null,hostToken:null,seq:0,players:[],status:'',err:'',inGame:false,closing:false,snapT:0,privT:0,inT:0,inKey:'',typing:false,lastVis:null,retries:0,pingT:0,log:null};
 function isClient(){return NET.role==='player'&&!!NET.ws;}
 function isHost(){return NET.role==='host'&&!!NET.ws;}
@@ -1512,8 +1519,8 @@ function showClosed(msg){netClose();closeMG();resetJoy();G={mode:'closed',rt:G.r
 const NET_ERR={invalid_message:'The relay rejected a message.',invalid_json:'The relay could not read a message.',send_hello_first:'Handshake problem; please rejoin.',host_already_connected:'That room code already has a host. Pick another code.',unsupported_host_message:'Unsupported host message.',unsupported_player_message:'Unsupported player message.',rate_limited:'Sending too fast; slowing down.',server_error:'Relay server error.'};
 function onNet(m){switch(m.type){
  case 'welcome':NET.myId=m.clientId;{const h={type:'hello',role:NET.role,name:NET.name};if(NET.role==='host'&&NET.hostToken)h.hostToken=NET.hostToken;rawSend(h);}break;
- case 'joined':NET.myId=m.clientId;if(m.hostToken)NET.hostToken=m.hostToken;NET.players=Array.isArray(m.players)?m.players:[];NET.status='';NET.retries=0;if(LG.me&&G.mode==='lobby'){const idx=Math.max(0,NET.players.findIndex(q=>q.clientId===NET.myId));loungeSeat(LG.me,idx);}if(NET.role==='player'){LG.pendingT=1.5;LG.pendingCol=LG.me?LG.me.colIdx:null;act({a:'cos',c:LG.me?LG.me.colIdx:0,h:LG.me?LG.me.hat:'none',p:LG.me?LG.me.pants:'none',s:LG.me?(LG.me.shirt||'none'):'none'});}if(!m.isHost&&NET.role==='host'){showClosed('Could not become host of this room.');}break;
- case 'player_joined':NET.players=Array.isArray(m.players)?m.players:NET.players;if(NET.role==='host'&&m.player)sendTo(m.player.clientId,{k:'cfg',cfg:CFG});if(isHost()&&NET.inGame&&m.player)sendTo(m.player.clientId,{k:'busy'});break;
+ case 'joined':NET.myId=m.clientId;if(m.hostToken)NET.hostToken=m.hostToken;NET.players=Array.isArray(m.players)?m.players:[];NET.status='';NET.retries=0;if(LG.me&&G.mode==='lobby'){const idx=Math.max(0,NET.players.findIndex(q=>q.clientId===NET.myId));loungeSeat(LG.me,idx);}if(NET.role==='player'){LG.pendingT=1.5;LG.pendingCol=LG.me?LG.me.colIdx:null;act({a:'cos',c:LG.me?LG.me.colIdx:0,h:LG.me?LG.me.hat:'none',p:LG.me?LG.me.pants:'none',s:LG.me?(LG.me.shirt||'none'):'none'});act({a:'hello',proto:PROTO});NET.hostProto=null;NET.helloAt=Date.now();}if(!m.isHost&&NET.role==='host'){showClosed('Could not become host of this room.');}break;
+ case 'player_joined':NET.players=Array.isArray(m.players)?m.players:NET.players;if(NET.role==='host'&&m.player)sendTo(m.player.clientId,{k:'cfg',cfg:CFG,proto:PROTO,min:PROTO_MIN_PEER});if(isHost()&&NET.inGame&&m.player)sendTo(m.player.clientId,{k:'busy'});break;
  case 'player_left':NET.players=Array.isArray(m.players)?m.players:NET.players;if(LG.others&&m.clientId)delete LG.others[m.clientId];if(isHost()&&NET.inGame)seatLeft(m.clientId);break;
  case 'room_closed':showClosed(m.reason==='host_left'?'Host left, room closed.':'The room was closed.');break;
  case 'error':NET.err=NET_ERR[m.error]||('Relay error: '+m.error);if(m.error==='host_already_connected'){if(NET.role==='host'&&NET.hostToken&&NET.retries<3){NET.retries++;NET.status='Reconnecting…';const role=NET.role;setTimeout(()=>{if(NET.role===role&&!NET.closing)openSocket();},2000*NET.retries);}else showClosed(NET.err);}break;
@@ -1528,8 +1535,9 @@ function netTick(dt){netWatchdog(dt);if(!NET.ws)return;NET.pingT+=dt;if(NET.ping
   NET.privT+=dt;if(NET.privT>=0.5){NET.privT=0;for(const a of G.agents)if(a.remote)sendPriv(a);}}}
 // ---------- host side ----------
 function hostStart(opts){const seatCap=Math.max(0,clamp(Math.round(CFG.players||10),4,10)-1);const humans=NET.players.filter(q=>!q.isHost&&q.clientId!==NET.myId).slice(0,seatCap).map(q=>{const o=LG.others&&LG.others[q.clientId];return Object.assign({},q,{cos:o?{colIdx:o.colIdx,hat:o.hat,pants:o.pants,shirt:o.shirt}:null});});newGame(Object.assign({mp:humans,name:NET.name,myCos:LG.me?{colIdx:LG.me.colIdx,hat:LG.me.hat,pants:LG.me.pants,shirt:LG.me.shirt}:null},opts||{}));LG.active=false;NET.inGame=true;
- netSend({type:'event',data:{k:'start',cfg:CFG,agents:G.agents.map(a=>[a.id,a.name,a.col,a.remote||(a.isPlayer?NET.myId:null),(COSMAP[a.col]||{}).hat||'none',(COSMAP[a.col]||{}).pants||'none',(COSMAP[a.col]||{}).shirt||'none'])}});
+ netSend({type:'event',data:{k:'start',proto:PROTO,min:PROTO_MIN_PEER,cfg:CFG,agents:G.agents.map(a=>[a.id,a.name,a.col,a.remote||(a.isPlayer?NET.myId:null),(COSMAP[a.col]||{}).hat||'none',(COSMAP[a.col]||{}).pants||'none',(COSMAP[a.col]||{}).shirt||'none'])}});
  for(const a of G.agents)if(a.remote)sendPriv(a);
+ {const old=G.agents.filter(a=>a.remote&&protoOf((NET.peerProto||{})[a.remote])<PROTO).map(a=>a.name);if(old.length)G.toast={t:6,text:old.join(', ')+(old.length>1?' are':' is')+' on an older version. Ask them to refresh before the next round.'};}
  NET.players.filter(q=>!q.isHost&&q.clientId!==NET.myId).slice(seatCap).forEach(q=>sendTo(q.clientId,{k:'full'}));}
 function hostToLobby(){NET.inGame=false;netSend({type:'event',data:{k:'lobby'}});G={mode:'lobby',rt:G.rt||0};loungeReturn();}
 function seatLeft(cid){const a=G.agents&&G.agents.find(q=>q.remote===cid);if(!a)return;a.remote=null;a.human=false;a.in=null;a.padHold=-1;a.typing=false;a.path=[];a.cur=null;a.wait=0;a.goalTag='';a.inVent=null;
@@ -1545,29 +1553,31 @@ function hostRecv(m){if(!NET.inGame){if(LG.me)loungeHostRecv(m);return;}if(!G.ag
  if(m.type==='event')hostAction(a,d);}
 function hostAction(a,d){const M=G.M,play=G.mode==='play';
  switch(d.a){
- case 'task':{if(!play)return;const t=d.u!=null?a.tasks.find(q=>q.kind&&q.uid===d.u):((d.i|0)>=0?a.tasks.filter(q=>q.kind)[d.i|0]:null);if(!t||t.done||!t.kind||(d.s!=null&&d.s!==t.step)){sendPriv(a);return;}if(t.kind==='data'&&t.step===0)t.step=1;else{t.done=true;if(!t.fake){G.tasksDone++;checkWin();}}sendPriv(a);break;}
+ case 'task':{if(!play)return;const t=d.u!=null?a.tasks.find(q=>q.kind&&q.uid===d.u):at(a.tasks.filter(q=>q.kind),d.i);if(!t||t.done||!t.kind||(d.s!=null&&d.s!==t.step)){sendPriv(a);return;}if(t.kind==='data'&&t.step===0)t.step=1;else{t.done=true;if(!t.fake){G.tasksDone++;checkWin();}}sendPriv(a);break;}
  case 'bell':if(play&&a.alive&&a.meetingsLeft>0&&!G.sab&&G.buttonCD<=0&&dist(a.x,a.y,BELL.x,BELL.y)<75){a.meetingsLeft--;callMeeting('button',a,null);sendPriv(a);}break;
- case 'report':{const bd=G.bodies.find(b=>b.id===(d.id|0)&&!b.reported);if(play&&a.alive&&a.inVent==null&&bd&&dist(a.x,a.y,bd.x,bd.y)<110)callMeeting('body',a,bd);break;}
- case 'kill':{const v=G.agents[d.id|0];if(play&&a.imp&&a.alive&&a.inVent==null&&a.kcd<=0&&v&&v!==a&&v.alive&&!v.imp&&v.inVent==null&&dist(a.x,a.y,v.x,v.y)<killRange()+15)doKill(a,v,witnessesOf(a,v));break;}
- case 'vent':{const v=VENTS[d.id|0];if(play&&a.alive&&a.inVent==null&&v&&(a.imp||(a.role==='engineer'&&a.abCD<=0))&&dist(a.x,a.y,v.x,v.y)<60){ventWitness(a,v);a.x=v.x;a.y=v.y;a.inVent=v.id;a.ventT=0;a.in=null;sendPriv(a);}break;}
- case 'ventmove':{if(a.inVent==null)return;const v=VENTS[a.inVent],o=VENTS[d.to|0];if(o&&o!==v&&o.net===v.net){o.open=0.4;a.inVent=o.id;a.x=o.x;a.y=o.y;sendPriv(a);}break;}
+ case 'report':{const bd=Number.isInteger(d.id)?G.bodies.find(b=>b.id===d.id&&!b.reported):null;if(play&&a.alive&&a.inVent==null&&bd&&dist(a.x,a.y,bd.x,bd.y)<110)callMeeting('body',a,bd);break;}
+ case 'kill':{const v=at(G.agents,d.id);if(play&&a.imp&&a.alive&&a.inVent==null&&a.kcd<=0&&v&&v!==a&&v.alive&&!v.imp&&v.inVent==null&&dist(a.x,a.y,v.x,v.y)<killRange()+15)doKill(a,v,witnessesOf(a,v));break;}
+ case 'vent':{const v=at(VENTS,d.id);if(play&&a.alive&&a.inVent==null&&v&&(a.imp||(a.role==='engineer'&&a.abCD<=0))&&dist(a.x,a.y,v.x,v.y)<60){ventWitness(a,v);a.x=v.x;a.y=v.y;a.inVent=v.id;a.ventT=0;a.in=null;sendPriv(a);}break;}
+ case 'ventmove':{if(a.inVent==null)return;const v=VENTS[a.inVent],o=at(VENTS,d.to);if(o&&o!==v&&o.net===v.net){o.open=0.4;a.inVent=o.id;a.x=o.x;a.y=o.y;sendPriv(a);}break;}
  case 'exitvent':remoteExitVent(a);break;
  case 'sab':if(play&&a.imp&&!G.sab&&G.sabCD<=0&&(d.t==='melt'||d.t==='o2'))startSab(d.t);break;
- case 'ability':{if(!play||a.imp)return;if(a.role==='guardian'?a.alive:!a.alive)return;const t=d.id==null?null:G.agents[d.id|0];
+ case 'ability':{if(!play||a.imp)return;if(a.role==='guardian'?a.alive:!a.alive)return;const t=at(G.agents,d.id)||null;
   if(a.role==='tracker'&&a.ptrack==null&&a.abCD<=0&&t&&t!==a&&t.alive&&dist(a.x,a.y,t.x,t.y)<95){a.ptrack=t.id;a.ptrackT=CFG.trkDur;}
   else if(a.role==='guardian'&&a.abCD<=0&&t&&t!==a&&t.alive&&dist(a.x,a.y,t.x,t.y)<150){t.shieldT=CFG.guaDur;t.shieldBy=a.id;a.abCD=CFG.guaCD;}
   else if(a.role==='monitor'&&a.abCD<=0)a.abCD=CFG.monBattery+CFG.monCD;
   sendPriv(a);break;}
  case 'cams':a.onCams=!!d.on;break;
  case 'vitals':a.onVitals=!!d.on;break;
- case 'pad':a.padHold=d.on?(d.idx|0):-1;break;
- case 'keypad':if(G.sab&&G.sab.type==='o2'&&String(d.code)===G.sab.code){const fp=G.sab.pts[d.idx|0];if(fp&&dist(a.x,a.y,fp.x,fp.y)<75)fp.fixed=true;}break;
+ case 'pad':a.padHold=d.on&&G.sab&&at(G.sab.pts,d.idx)?d.idx:-1;break;
+ case 'keypad':if(G.sab&&G.sab.type==='o2'&&String(d.code)===G.sab.code){const fp=at(G.sab.pts,d.idx);if(fp&&dist(a.x,a.y,fp.x,fp.y)<75)fp.fixed=true;}break;
  case 'vis':a.vis=(d.v==='scan'&&!a.imp&&a.alive&&dist(a.x,a.y,STN.scan.x,STN.scan.y)<40)?'scan':null;break;
  case 'shot':if(!a.imp&&dist(a.x,a.y,STN.meteors.x,STN.meteors.y)<70)worldShot();break;
+ case 'hello':hostNoteProto(a.remote,d.proto);break;
  case 'seen':if(M&&(d.ph==='results'||d.ph==='eject')&&d.ph===M.phase){const S=(M.seenAt=M.seenAt||{})[d.ph]=(M.seenAt[d.ph]||{});if(S[a.id]==null)S[a.id]=M.t;}break;
- case 'vote':if(M&&M.phase==='vote'&&a.alive&&M.votes[a.id]===undefined){if(d.t==='skip'){M.votes[a.id]='skip';voteLanded(a.id);}else{const t=G.agents[d.t|0];if(t&&t.alive){M.votes[a.id]=t.id;voteLanded(a.id);}}}break;
+ case 'vote':if(M&&M.phase==='vote'&&a.alive&&M.votes[a.id]===undefined){if(d.t==='skip'){M.votes[a.id]='skip';voteLanded(a.id);}else{const t=at(G.agents,d.t);if(t&&t.alive){M.votes[a.id]=t.id;voteLanded(a.id);}}}break;
  case 'govote':if(M&&M.phase==='discuss'&&a.alive){M.ready=M.ready||{};M.ready[a.id]=1;}break;
- case 'typing':a.typing=!!d.on;a.typingT=0;break;}}
+ case 'typing':a.typing=!!d.on;a.typingT=0;break;
+ default:break;/* unknown actions (e.g. from a newer client) are ignored */}}
 function privFor(a){return{k:'priv',you:a.id,imp:a.imp?1:0,role:a.imp?null:(a.role||null),partners:a.imp?G.agents.filter(q=>q.imp&&q!==a).map(q=>q.id):[],
  tasks:(a.tasks||[]).filter(t=>t.kind).map(t=>[t.kind,t.step,t.done?1:0,t.fake?1:0,t.uid]),kcd:Math.max(0,Math.round(a.kcd*10)/10),abCD:Math.max(0,Math.round(a.abCD*10)/10),inVent:a.inVent,ventT:Math.round((a.ventT||0)*10)/10,ptrack:a.ptrack,bellUsed:a.meetingsLeft<=0?1:0,
  sabCD:a.imp?Math.max(0,Math.round(G.sabCD)):0,shields:a.role==='guardian'?G.agents.filter(q=>q.shieldT>0&&q.shieldBy===a.id).map(q=>q.id):(a.imp&&CFG.guaVisImp?G.agents.filter(q=>q.shieldT>0).map(q=>q.id):[]),ptrackT:Math.round((a.ptrackT||0)*10)/10,meetingsLeft:a.meetingsLeft,
@@ -1596,30 +1606,37 @@ function clientRecv(m){const d=(m.data&&typeof m.data==='object')?m.data:{};
  if(m.type!=='event')return;
  switch(d.k){
   case 'start':clientStart(d);break;
-  case 'cfg':if(d.cfg)CFG=clampCfg(d.cfg);break;
+  case 'cfg':if(d.cfg)CFG=clampCfg(d.cfg);if(d.proto!=null)clientNoteHost(d);break;
+  case 'proto':clientNoteHost(d);break;
+  case 'proto_bad':showClosed('Your copy of the game is out of date for this room. Please refresh the page, then rejoin.');break;
+  default:break;/* unknown event kinds (e.g. from a newer host) are ignored */
   case 'priv':applyPriv(d);break;
-  case 'died':if(G.agents&&G.agents[d.killer]){closeMG();resetJoy();G.deathFx={t:2.8,killer:G.agents[d.killer]};SFX.kill();}break;
+  case 'died':if(at(G.agents,d.killer)){closeMG();resetJoy();G.deathFx={t:2.8,killer:at(G.agents,d.killer)};SFX.kill();}break;
   case 'killfx':if(G.agents){G.flash=0.45;G.fx.push({type:'slash',x:d.x,y:d.y-20,t:0.5});SFX.kill();}break;
   case 'shieldfx':if(G.agents){G.fx.push({type:'shield',x:d.x,y:d.y-24,t:0.7});SFX.bad();}break;
   case 'toast':if(G.agents)G.toast={t:2.5,text:String(d.text||'').slice(0,80)};break;
   case 'lobby':closeMG();G={mode:'lobby',rt:G.rt||0};loungeReturn();break;
   case 'busy':G={mode:'lobby',rt:G.rt||0,busy:1};if(!LG.me)loungeReturn();break;
   case 'full':G={mode:'lobby',rt:G.rt||0,full:1};if(!LG.me)loungeReturn();break;}}
-function clientStart(d){if(d.cfg){CFG=clampCfg(d.cfg);}applyCfg();const ag=Array.isArray(d.agents)?d.agents:[];if(!ag.some(r=>r[3]===NET.myId)){G={mode:'lobby',rt:G.rt||0,full:1};return;}closeMG();resetJoy();
+function clientNoteHost(d){NET.hostProto=protoOf(d.proto);const min=protoOf(d.min);if(PROTO<min){showClosed('Your copy of the game is out of date for this room. Please refresh the page, then rejoin.');return;}if(NET.hostProto<PROTO_MIN_PEER)showClosed('The host is running an older version of the game that this one cannot play with. Ask the host to refresh the page.');}
+/* the host is on an older build when it never answers the hello (or starts without a version) */
+function sendResync(){G.toast={t:2.5,text:'Task list is re-syncing. Try again in a moment.'};}
+function hostIsOld(){if(NET.hostProto==null&&NET.helloAt&&Date.now()-NET.helloAt>4000)NET.hostProto=1;return isClient()&&NET.hostProto!=null&&NET.hostProto<PROTO;}
+function clientStart(d){if(d.cfg){CFG=clampCfg(d.cfg);}if(d.proto!=null)clientNoteHost(d);else NET.hostProto=1;if(G.mode==='closed')return;applyCfg();const ag=Array.isArray(d.agents)?d.agents:[];if(!ag.some(r=>r[3]===NET.myId)){G={mode:'lobby',rt:G.rt||0,full:1};return;}closeMG();resetJoy();
  G={mode:'reveal',rt:G.rt||0,revealT:0,t:0,agents:[],bodies:[],deaths:[],killCD:1e9,pKillCD:KILL_CD,pAbCD:10,sabCD:999,sab:null,M:null,buttonUsed:false,buttonCD:15,mg:null,fx:[],cam:{x:BELL.x,y:BELL.y},flash:0,deathFx:null,lastMeetT:0,tasksDone:0,tasksTotal:1,mapOpen:false,tasksOpen:true,alarmT:0,toast:null,end:null,shots:[],abT:null,killT:null,voteT:{},ptrack:null,sabMenu:false,engCount:0,roleList:[],playerImp:false};
  COSMAP={};for(const r of ag){if(/^#[0-9a-f]{6}$/i.test(r[2]))COSMAP[r[2]]={hat:HAT_IDS.includes(r[4])?r[4]:'none',pants:PANT_IDS.includes(r[5])?r[5]:'none',shirt:shirtOk(r[6])};}
- for(const r of ag){const [id,name,col,cid]=r;G.agents[id]={id,name:String(name).slice(0,14),col:/^#[0-9a-f]{6}$/i.test(col)?col:'#cccccc',x:BELL.x,y:BELL.y,tx:BELL.x,ty:BELL.y,face:1,walk:Math.random()*6,moving:false,alive:true,imp:false,isPlayer:cid===NET.myId,remote:cid||null,human:!!cid,inVent:null,vis:null,lunge:0,shieldT:0,role:null,tasks:[],trail:[],snaps:[],witness:[],visual:[],ventSaw:[],claimEng:false,ventT:0};}
+ for(const r of ag){if(!Array.isArray(r))continue;const [id,name,col,cid]=r;if(!Number.isInteger(id)||id<0||id>=10)continue;G.agents[id]={id,name:String(name).slice(0,14),col:/^#[0-9a-f]{6}$/i.test(col)?col:'#cccccc',x:BELL.x,y:BELL.y,tx:BELL.x,ty:BELL.y,face:1,walk:Math.random()*6,moving:false,alive:true,imp:false,isPlayer:cid===NET.myId,remote:cid||null,human:!!cid,inVent:null,vis:null,lunge:0,shieldT:0,role:null,tasks:[],trail:[],snaps:[],witness:[],visual:[],ventSaw:[],claimEng:false,ventT:0};}
  G.player=G.agents.find(a=>a&&a.isPlayer);NET.lastVis=null;NET.typing=false;}
 /* Same object is kept for the same uid, so a minigame opened on it stays valid across priv refreshes. A local completion
  is shown at once (pend); if the host has not confirmed it after 1.5s it is resent (host is idempotent per uid+step),
  and after 3 tries the host's truth wins so the list never shows work the crew total does not have. */
 function reconcileTask(o,r){const host={kind:r[0],step:r[1],done:!!r[2],fake:!!r[3],uid:r[4]};if(!o||o.kind!==host.kind){return host;}
  o.fake=host.fake;o.uid=host.uid;const pd=o.pend;
- if(pd){const hostHas=host.done||host.step>pd.s;if(hostHas)o.pend=null;else if(G.rt-pd.at<1.5){return o;}else if(pd.n<3){pd.n++;pd.at=G.rt;act({a:'task',u:o.uid,s:pd.s});return o;}else o.pend=null;}
+ if(pd){const hostHas=host.done||host.step>pd.s;if(hostHas)o.pend=null;else if(G.rt-pd.at<1.5){return o;}else if(pd.n<3){pd.n++;pd.at=G.rt;act({a:'task',u:o.uid,s:pd.s,i:(G.player.tasks||[]).indexOf(o)});return o;}else o.pend=null;}
  o.step=host.step;o.done=host.done;return o;}
 function applyPriv(d){if(!G.agents||!G.player)return;const p=G.player;p.imp=!!d.imp;G.playerImp=p.imp;p.role=d.role||null;
  for(const a of G.agents)if(!a.isPlayer&&G.mode!=='end')a.imp=false;(d.partners||[]).forEach(id=>{if(G.agents[id])G.agents[id].imp=true;});
- const old=p.tasks||[];p.tasks=(d.tasks||[]).map(r=>reconcileTask(old.find(o=>o.uid!=null&&o.uid===r[4]),r));
+ const old=p.tasks||[];p.tasks=(d.tasks||[]).map((r,i)=>reconcileTask(r[4]!=null?old.find(o=>o.uid!=null&&o.uid===r[4]):old[i],r));/* hosts on protocol 1 send no uid: keep the object at the same position */
  G.pKillCD=+d.kcd||0;G.pAbCD=+d.abCD||0;p.inVent=d.inVent==null?null:d.inVent;p.ventT=+d.ventT||0;G.ptrack=d.ptrack==null?null:d.ptrack;G.ptrackT=+d.ptrackT||0;p.meetingsLeft=d.meetingsLeft;G.buttonUsed=!!d.bellUsed;G.sabCD=+d.sabCD||0;
  for(const a of G.agents){a.shieldT=(d.shields||[]).includes(a.id)?30:0;a.shieldBy=p.role==='guardian'&&a.shieldT?p.id:null;}G.deaths=(d.deaths||[]).map(x=>({victim:x[0],t:x[1]}));G.engCount=d.engCount||0;G.roleList=d.roleList||[];}
 function applySnap(sn){if(!G.agents||!G.player)return;const prev=G.mode;const p=G.player;
@@ -1942,10 +1959,11 @@ function loungeUse(){const n=LG.near;if(!n||LG.wardrobe)return;resetJoy();SND.pl
  if(n.id==='wardrobe'){LG.wardrobe=true;LG.tab=0;}else openSettings('lobby',isClient());}
 function loungeStart(){SND.play('start');if(LG.solo||!NET.role){const m=LG.me;newGame({myCos:{colIdx:m.colIdx,hat:m.hat,pants:m.pants,shirt:m.shirt},botCos:LG.bots.map(b=>({colIdx:b.colIdx,hat:b.hat,pants:b.pants,shirt:b.shirt}))});LG.active=false;return;}if(isHost())hostStart();}
 // ---- host side ----
-function loungeHostRecv(m){const cid=m.from;if(!cid||cid===NET.myId||m.type==='snapshot')return;const d=(m.data&&typeof m.data==='object')?m.data:{};let o=LG.others[cid];
+function hostNoteProto(cid,v){const p=protoOf(v);(NET.peerProto=NET.peerProto||{})[cid]=p;sendTo(cid,{k:'proto',proto:PROTO,min:PROTO_MIN_PEER});if(p<PROTO_MIN_PEER)sendTo(cid,{k:'proto_bad',proto:PROTO,min:PROTO_MIN_PEER});}
+function loungeHostRecv(m){const cid=m.from;if(!cid||cid===NET.myId||m.type==='snapshot')return;const d=(m.data&&typeof m.data==='object')?m.data:{};if(m.type==='event'&&d.a==='hello'){hostNoteProto(cid,d.proto);return;}let o=LG.others[cid];
  if(!o){const pl=NET.players.find(q=>q.clientId===cid);if(!pl)return;o=loungeAddPlayer(cid,pl.name,null);}
  if(m.type==='input'&&d.lx!=null){o.tx=clamp(+d.lx||0,0,LW);o.ty=clamp(+d.ly||0,0,LH);o.face=d.f<0?-1:1;o.moving=!!d.m;o.seen=1;}
- if(m.type==='event'&&d.a==='cos'){const t=new Set([LG.me.colIdx]);for(const k in LG.others)if(k!==cid)t.add(LG.others[k].colIdx);if(d.c!=null)o.colIdx=firstFree(d.c|0,t);if(HAT_IDS.includes(d.h))o.hat=d.h;if(PANT_IDS.includes(d.p))o.pants=d.p;if(SHIRT_IDS.includes(d.s))o.shirt=d.s;}}
+ if(m.type==='event'&&d.a==='cos'){const t=new Set([LG.me.colIdx]);for(const k in LG.others)if(k!==cid)t.add(LG.others[k].colIdx);if(at(PAL,d.c))o.colIdx=firstFree(d.c,t);if(HAT_IDS.includes(d.h))o.hat=d.h;if(PANT_IDS.includes(d.p))o.pants=d.p;if(SHIRT_IDS.includes(d.s))o.shirt=d.s;}}
 function loungeAddPlayer(cid,name,pref){const t=new Set([LG.me.colIdx]);for(const k in LG.others)t.add(LG.others[k].colIdx);const idx=Math.max(1,NET.players.findIndex(q=>q.clientId===cid));const st=LSEATS[idx%10];
  return LG.others[cid]={name:cleanName(name),x:st.fx,y:st.y+8,tx:st.fx,ty:st.y+8,face:st.face,moving:false,walk:Math.random()*6,colIdx:firstFree(pref,t),hat:'none',pants:'none'};}
 function loungeSnap(){if(LG.others[NET.myId])delete LG.others[NET.myId];const used=new Set(),uname=n=>{let b=cleanName(n),x=b,k=2;while(used.has(x.toLowerCase()))x=b+k++;used.add(x.toLowerCase());return x;};const rows=[];const m=LG.me;
@@ -2081,5 +2099,5 @@ let last=performance.now();
 function frame(now){if(window.__kestrelLoop!==LOOP_ID)return;const dt=Math.min(0.05,Math.max(0,(now-last)/1000));last=now;try{update(dt);if(!overviewOn()||now-(G._ovT||0)>=32){G._ovT=now;render();}}catch(e){console.error(e);}requestAnimationFrame(frame);}
 requestAnimationFrame(frame);
 // test hooks
-window.__K={get G(){return G;},openMG,MG_wires,MG_swipe,MG_data,MG_meteors,MG_shields,MG_seq,MG_scan,MG_align,startVote,leaveGame,leaveConsequence,get LG(){return LG;},enterLounge,setMyCos,loungeUse,loungeStart,lcanStand,LSTATIONS,PAL,HATS,PANTS,get COSMAP(){return COSMAP;},aiSoloRefresh,get UI(){return UI;},AI,SND,MUSIC,aiBody,botMemories,packBody,memClasses,recordHistory,cleanSay,socialNotes,clampCfg,setCfg:c=>{CFG=clampCfg(c);},get CFG(){return CFG;},CAMS,inHall,openSettings,seeAlpha,canSee,visR,filterSnap,VIS_R,NET,hostStart,buildSnap,privFor,netConnect,hostToLobby,cleanCode,susMap,botVote,skeptics,doAbility,abilityState,MG_cams,MG_vitals,seeAlpha,objective,ROLES,witnessesOf,doKill_P,ventMove,doSab,playerSay,composing,VENTS:()=>VENTS,CI,panel,tablet,newGame,update,render,callMeeting,startVote,doUse,doReport,startSab,canStand,astar,STN,TASKDEF,SABPTS,BELL,JOY,PTRS,completePlayerTask,openMG,MG_wires,closeMG};
+window.__K={get G(){return G;},openMG,MG_wires,MG_swipe,MG_data,MG_meteors,MG_shields,MG_seq,MG_scan,MG_align,startVote,leaveGame,leaveConsequence,get LG(){return LG;},enterLounge,setMyCos,loungeUse,loungeStart,lcanStand,LSTATIONS,PAL,HATS,PANTS,get COSMAP(){return COSMAP;},aiSoloRefresh,get UI(){return UI;},AI,SND,MUSIC,aiBody,botMemories,packBody,memClasses,recordHistory,cleanSay,socialNotes,clampCfg,setCfg:c=>{CFG=clampCfg(c);},get CFG(){return CFG;},CAMS,inHall,openSettings,seeAlpha,canSee,visR,filterSnap,VIS_R,NET,hostStart,buildSnap,privFor,netConnect,hostToLobby,cleanCode,susMap,botVote,skeptics,doAbility,abilityState,MG_cams,MG_vitals,seeAlpha,objective,ROLES,witnessesOf,doKill_P,ventMove,doSab,playerSay,composing,VENTS:()=>VENTS,CI,panel,tablet,newGame,update,render,callMeeting,startVote,doUse,doReport,startSab,canStand,astar,STN,TASKDEF,SABPTS,BELL,JOY,PTRS,hostIsOld,clientNoteHost,completePlayerTask,openMG,MG_wires,closeMG};
 </script></body></html>
