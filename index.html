@@ -466,7 +466,7 @@ const JOY={id:null,bx:0,by:0,x:0,y:0,vx:0,vy:0};
 const KEYS={};
 function resetJoy(){JOY.id=null;JOY.vx=0;JOY.vy=0;}
 function joyUpdate(){const dx=JOY.x-JOY.bx,dy=JOY.y-JOY.by,R=52,d=Math.hypot(dx,dy);if(d<6){JOY.vx=0;JOY.vy=0;return;}const m=Math.min(1,d/R);JOY.vx=dx/d*m;JOY.vy=dy/d*m;}
-cv.addEventListener('pointerdown',e=>{e.preventDefault();ensureAudio();onDown(e.clientX,e.clientY,e.pointerId);},{passive:false});
+cv.addEventListener('pointerdown',e=>{e.preventDefault();ensureAudio();releaseTyping();/* preventDefault stops the browser moving focus, so release the text field ourselves */onDown(e.clientX,e.clientY,e.pointerId);},{passive:false});
 cv.addEventListener('pointermove',e=>{e.preventDefault();onMove(e.clientX,e.clientY,e.pointerId);},{passive:false});
 cv.addEventListener('pointerup',e=>{e.preventDefault();onUp(e.clientX,e.clientY,e.pointerId);},{passive:false});
 cv.addEventListener('pointercancel',e=>onUp(e.clientX,e.clientY,e.pointerId));
@@ -497,7 +497,10 @@ function kbTry(a,k){if(KB_RESERVED.includes(k)){KG.msg=keyName(k)+' is reserved.
  KB[a]=k;saveKB();KG.msg=KB_LABEL[a]+' set to '+keyName(k)+'.';return true;}
 function kbReset(){KB=Object.assign({},KB_DEF);saveKB();KG.cap=null;KG.msg='Shortcuts reset to defaults.';}
 function openKeys(){KG.open=true;KG.cap=null;KG.msg='';KG.scroll=0;resetJoy();for(const k in KEYS)KEYS[k]=false;}
-addEventListener('keydown',e=>{if(typingNow())return;// never while a text field has focus
+/* A click on the game, Esc, or a field that is no longer on screen releases keyboard focus back to the game. */
+function releaseTyping(){const ae=document.activeElement;if(ae&&ae!==document.body&&typingNow()&&ae.blur)ae.blur();}
+function fieldShown(el){return !!el&&el.getClientRects().length>0&&getComputedStyle(el).visibility!=='hidden';}
+addEventListener('keydown',e=>{if(typingNow()){if(e.key==='Escape'){e.preventDefault();releaseTyping();return;}if(fieldShown(document.activeElement))return;releaseTyping();}/* never while a visible text field has focus */
  const k=e.key.toLowerCase();
  if(KG.cap){e.preventDefault();if(k==='escape'){KG.cap=null;KG.msg='';return;}if(['shift','control','alt','meta','capslock'].includes(k))return;if(kbTry(KG.cap,k))KG.cap=null;return;}
  if(k==='f1'||e.key==='?'){e.preventDefault();if(KG.open)KG.open=false;else openKeys();return;}
@@ -1190,7 +1193,8 @@ function viewZ(){return overviewOn()?Math.min((W-SA.l-SA.r)*0.96/WW,(H-SA.t-SA.b
 function viewCam(){return overviewOn()?{x:WW/2,y:WH/2-30/viewZ()}:G.cam;}
 function w2s(x,y){const Z=viewZ(),C=viewCam();return{x:(x-C.x)*Z+W/2,y:(y-C.y)*Z+H/2};}
 function render(){CHAT_POS=null;MP_POS=null;try{renderInner();}finally{placeChat();placeMP();}}
-function renderInner(){renderScene();if(KG.open)drawKeysGuide();}
+function renderInner(){renderScene();if(KG.open)drawKeysGuide();if(typingNow()&&(G.mode==='play'||G.mode==='lobby'))drawTypingHint();}
+function drawTypingHint(){const c=ctx,s='TYPING · Enter to send · Esc or tap the game to move';c.font='800 12px system-ui,sans-serif';const w=Math.min(W-24,c.measureText(s).width+24),x=W/2-w/2,y=SA.t+70;rr(c,x,y,w,26,13);c.fillStyle='rgba(20,28,52,.92)';c.fill();c.strokeStyle='#ffd84a';c.lineWidth=1.5;c.stroke();const f=fitText(c,s,w-14,12,'800 ');txt(c,f.str,W/2,y+13,f.fs,'#ffe9a0','center',true);}
 function renderScene(){ctx.setTransform(DPR,0,0,DPR,0,0);UI.hits.length=0;UI.btns=[];ctx.fillStyle='#05060c';ctx.fillRect(0,0,W,H);
  if(G.mode==='settings')return drawSettings();if(G.mode==='mpmenu')return drawMPMenu();if(G.mode==='lobby')return drawLounge();if(G.mode==='closed')return drawClosed();
  if(G.mode==='title')return drawTitle();
