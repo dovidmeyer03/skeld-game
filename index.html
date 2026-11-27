@@ -122,6 +122,8 @@ function inAny(x,y){for(let i=0;i<RECTS.length;i++){const r=RECTS[i];if(x>=r.x&&
 function inObst(x,y){for(let i=0;i<OBST.length;i++){const o=OBST[i];if(o.c){if((x-o.x)*(x-o.x)+(y-o.y)*(y-o.y)<o.r*o.r)return true;}else if(x>o.x&&x<o.x+o.w&&y>o.y&&y<o.y+o.h)return true;}return false;}
 const CIRC=[];for(let i=0;i<8;i++)CIRC.push([Math.cos(i*Math.PI/4),Math.sin(i*Math.PI/4)]);
 function canStand(x,y,r){if(!inAny(x,y)||inObst(x,y))return false;for(let i=0;i<8;i++){const px=x+CIRC[i][0]*r,py=y+CIRC[i][1]*r;if(!inAny(px,py)||inObst(px,py))return false;}return true;}
+/* ' (here)' or a compass arrow from the player to the nearest unfixed sabotage point */
+function sabDir(S){const p=G.player;if(!p)return '';let best=null,bd=1e9;for(const fp of S.pts){if(fp.fixed)continue;const d=dist(p.x,p.y,fp.x,fp.y);if(d<bd){bd=d;best=fp;}}if(!best)return '';const r=roomAt(p.x,p.y);if((r&&r.name==='Reactor Core')||bd<140)return ' (you are here)';const a=Math.atan2(best.y-p.y,best.x-p.x);const k=((Math.round(a/(Math.PI/4))%8)+8)%8;return ' '+['→ east','↘ southeast','↓ south','↙ southwest','← west','↖ northwest','↑ north','↗ northeast'][k];}
 function roomAt(x,y){for(const r of ROOMS)if(x>=r.x&&x<=r.x+r.w&&y>=r.y&&y<=r.y+r.h)return r;return null;}
 function placeName(x,y){const r=roomAt(x,y);if(r)return r.name;let best=null,bd=1e9;for(const q of ROOMS){const d=dist(x,y,q.x+q.w/2,q.y+q.h/2);if(d<bd){bd=d;best=q;}}return'the hall by '+best.name;}
 function los(ax,ay,bx,by){const d=dist(ax,ay,bx,by),n=Math.ceil(d/7);for(let i=1;i<n;i++){const t=i/n;if(!inAny(ax+(bx-ax)*t,ay+(by-ay)*t))return false;}return true;}
@@ -729,7 +731,7 @@ function doKill(k,v,wn){
  if(Math.random()<0.1)k.selfRep={t:rand(3,6),body};
 }
 function ventWitness(k,v){v.open=0.5;if(G.player&&(k.isPlayer||canSee(G.player,{x:v.x,y:v.y,inVent:null})))SND.play('vent');const keep=k.inVent;k.inVent=null;for(const a of G.agents){if(a===k||!a.alive||a.human||a.imp)continue;if(canSee(a,k)){a.ventSaw.push({id:k.id,t:G.t,room:placeName(v.x,v.y)});}}k.inVent=keep;}
-function startSab(type){if(G.sab)return;const pts=SABPTS[type].map((p,i)=>{const s=snap(p.x,p.bottom?p.y-16:p.y+18);return{x:p.x,y:p.y,sx:s.x,sy:s.y,label:p.label,fixed:false,idx:i,bottom:p.bottom};});
+function startSab(type){if(G.sab)return;for(const a of G.agents)a.padHold=-1;const pts=SABPTS[type].map((p,i)=>{const s=snap(p.x,p.bottom?p.y-16:p.y+18);return{x:p.x,y:p.y,sx:s.x,sy:s.y,label:p.label,fixed:false,idx:i,bottom:p.bottom};});
  G.sab={type,t:45,pts,code:String(randi(10000,99999)),playerHold:-1,assignT:rand(1.5,3),reassT:0,holdT:0};G.alarmT=1.0;SND.play('sabStart');
  for(const a of G.agents){a.sabJob=null;a.sabWork=0;}}
 function assignSab(){const S=G.sab;for(const fp of S.pts){if(fp.fixed)continue;let have=G.agents.filter(a=>a.alive&&!a.imp&&!a.human&&a.sabJob===fp.idx).length;
@@ -738,7 +740,7 @@ function assignSab(){const S=G.sab;for(const fp of S.pts){if(fp.fixed)continue;l
 function updateSab(dt){const S=G.sab;if(!S)return;S.t-=dt;G.alarmT-=dt;if(G.alarmT<=0){G.alarmT=1.6;SFX.alarm();}
  S.assignT-=dt;if(S.assignT<=0){S.assignT=2;assignSab();}
  if(S.type==='melt'){const held=S.pts.map(fp=>S.playerHold===fp.idx||G.agents.some(a=>a.remote&&a.alive&&a.padHold===fp.idx&&dist(a.x,a.y,fp.x,fp.y)<70)||G.agents.some(a=>a.alive&&!a.imp&&!a.human&&a.sabJob===fp.idx&&dist(a.x,a.y,fp.sx,fp.sy)<20));S.held=held;if(held[0]&&held[1]){S.holdT+=dt;if(S.holdT>0.6){S.pts.forEach(p=>p.fixed=true);}}else S.holdT=0;}
- if(S.pts.every(p=>p.fixed)){G.sab=null;G.sabCD=rand(60,85);for(const a of G.agents){a.sabJob=null;a.path=[];a.cur=null;}SFX.ok();G.toast={t:2.5,text:S.type==='melt'?'Reactor stabilized':'Oxygen restored'};return;}
+ if(S.pts.every(p=>p.fixed)){G.sab=null;for(const a of G.agents)a.padHold=-1;G.sabCD=rand(60,85);for(const a of G.agents){a.sabJob=null;a.path=[];a.cur=null;}SFX.ok();G.toast={t:2.5,text:S.type==='melt'?'Reactor stabilized':'Oxygen restored'};return;}
  if(S.t<=0)endGame(false,S.type==='melt'?'The reactor melted down.':'The oxygen ran out.');
 }
 
@@ -992,7 +994,7 @@ function ventMove(to){const p=G.player;if(p.inVent==null)return;if(isClient()){a
 function doSab(type){if(G.sab||G.sabCD>0||!G.player.imp)return;if(isClient()){G.sabMenu=false;act({a:'sab',t:type});return;}G.sabMenu=false;startSab(type);}
 function doReport(){if(isClient()){if(G.repT&&!G.mg&&G.player.alive)act({a:'report',id:G.repT.id});return;}if(G.repT&&!G.mg&&G.player.alive&&G.player.inVent==null)callMeeting('body',G.player,G.repT);}
 function completePlayerTask(t){if(t.done)return;setTimeout(()=>{const mine=G.player.tasks.filter(q=>!q.fake);if(mine.length&&mine.every(q=>q.done))SND.play('allTasks');},50);if(isClient()){const cur=(t.uid!=null&&G.player.tasks.find(q=>q.uid===t.uid))||t;if(cur.done)return;if(cur.uid==null){G.toast={t:2.5,text:'Task not synced yet. Try again.'};return;}act({a:'task',u:cur.uid,s:cur.step});cur.pend={s:cur.step,at:G.rt,n:0};if(cur.kind==='data'&&cur.step===0){cur.step=1;G.toast={t:2,text:'Now upload it in Comms'};return;}cur.done=true;return;}if(t.kind==='data'&&t.step===0){t.step=1;G.toast={t:2,text:'Now upload it in Comms'};return;}t.done=true;G.tasksDone++;checkWin();}
-function releasePad(){if(G.sab&&G.sab.playerHold>=0){G.sab.playerHold=-1;if(isClient())act({a:'pad',on:0});}}
+function releasePad(){const had=(G.sab&&G.sab.playerHold>=0)||G.padSent;if(G.sab)G.sab.playerHold=-1;if(had&&isClient())act({a:'pad',on:0});G.padSent=false;}
 
 // ================= MINIGAMES =================
 const LAND=()=>W>H;
@@ -1115,7 +1117,7 @@ function MG_pad(idx){let holding=false,id=null;return{title:'Reactor Stabilizer'
   const S=G.sab;const other=S&&S.held&&S.held[1-idx];
   txt(c,this.done?'REACTOR STABILIZED':holding?(other?'STABILIZING…':'WAITING FOR SECOND OPERATOR'):'HOLD YOUR HAND ON THE SCANNER',P.x+P.s/2,P.y+28,Math.max(11,P.s*0.038),holding?'#7dffb0':'#ff8a7a','center',true);
   txt(c,other?'Other scanner: HELD':'Other scanner: empty',P.x+P.s/2,P.y+P.s-30,13,other?'#7dffb0':'#a88','center');},
- down(x,y,pid){const P=panel();if(x>P.x+30&&x<P.x+P.s-30&&y>P.y+50&&y<P.y+P.s-60){holding=true;id=pid;if(G.sab)G.sab.playerHold=idx;if(isClient())act({a:'pad',idx,on:1});SFX.click();}},
+ down(x,y,pid){const P=panel();if(x>P.x+30&&x<P.x+P.s-30&&y>P.y+50&&y<P.y+P.s-60){holding=true;id=pid;if(G.sab)G.sab.playerHold=idx;if(isClient()){act({a:'pad',idx,on:1});G.padSent=true;}SFX.click();}},
  up(x,y,pid){if(pid===id||id==null){holding=false;id=null;releasePad();}},
  onClose(){holding=false;releasePad();}};}
 function MG_keypad(idx){let entry='',bad=0;return{title:'Oxygen Override',sab:true,
@@ -1291,7 +1293,7 @@ function drawHUD(){const c=ctx,p=G.player;
   if(bx+bw+8+lw2<=iconsLeft-6)txt(c,lab,bx+bw+8,by+bh/2,10,'#cfd8e6','left',true,3);else{const f=fitText(c,lab,bw-12,9);txt(c,f.str,bx+6,by+bh/2+0.5,f.fs,'#ffffff','left',true,2.5);}}
  let ty=by+bh+8;
  if(G.sab){const S=G.sab;const lbl=S.type==='melt'?`REACTOR MELTDOWN ${Math.ceil(S.t)}s`:`OXYGEN DEPLETING ${Math.ceil(S.t)}s`;const fl=Math.sin(G.rt*8)>0;rr(c,bx,ty,bw,26,6);c.fillStyle=fl?'#b01818':'#6a0c0c';c.fill();txt(c,'⚠ '+lbl,bx+bw/2,ty+13,13,'#fff','center',true,3);ty+=30;
-  const sub=S.type==='melt'?`Hold both hand scanners in Reactor Core`:`Enter code ${S.code} in Hydroponics & Records (${S.pts.filter(q=>q.fixed).length}/2)`;txt(c,sub,bx+4,ty+6,11,'#ffb3b3','left',true,3);ty+=18;}
+  const sub=S.type==='melt'?`Hold both hand scanners in Reactor Core${sabDir(S)}`:`Enter code ${S.code} in Hydroponics & Records (${S.pts.filter(q=>q.fixed).length}/2)`;txt(c,sub,bx+4,ty+6,11,'#ffb3b3','left',true,3);ty+=18;}
  // task list
  const lines=p.tasks.map(t=>{const d=TASKDEF[t.kind];const s=curStation(t);return{t:`${s.room}: ${d.name}`+(t.kind==='data'?` (${t.done?2:t.step}/2)`:''),done:t.done,part:t.step>0&&!t.done};});
  if(p.role&&!p.imp)lines.push({t:ROLES[p.role].name+': '+ROLES[p.role].desc,role:true});
