@@ -1,0 +1,39 @@
+{
+ "botId": "Lime",
+ "meeting": {
+  "phase": "play",
+  "round": 1,
+  "accused": "",
+  "dead": []
+ },
+ "memories": [
+  "You are secretly a Saboteur. Never reveal it; blend in and act like a crewmate.",
+  "Your claimed location for this meeting: the hallway.",
+  "EVENT: You can kill now. Nearby: Red (90 away). Others who could see you: none."
+ ],
+ "chat": [],
+ "targets": [
+  "Cyan",
+  "Orange",
+  "Purple",
+  "Blue",
+  "Green",
+  "Red",
+  "White",
+  "Pink",
+  "Yellow"
+ ],
+ "ext": {
+  "v": 1,
+  "want": [
+   "beliefs",
+   "plan",
+   "act"
+  ],
+  "event": "kill_chance",
+  "options": [
+   "kill:Red",
+   "wait"
+  ]
+ }
+}

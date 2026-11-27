@@ -65,20 +65,27 @@ const UNSAFE = /<\s*\/?\s*[a-z!]|https?:\/\/|www\.|```|\{\s*"/i; // markup, link
 
 function okText(v, max) { return typeof v === 'string' && v.length <= max && !CTRL.test(v) && !UNSAFE.test(v); }
 
-// req: the client's request object (needs targets[], optional meeting.phase, optional ext.options[]).
-// Returns { ok:true, turn } with exactly the five fields, or { ok:false, reason }.
+// req: the NORMALIZED request (contract.js normalizeRequest): name, role, phase, targets[], options[], evidence[].
+// Two layers:
+//  - schema:*   the reply is malformed or names things the request never offered -> rejected (502 in the worker).
+//  - behavior:* the reply is well-formed but useless or self-inconsistent for this phase -> an explicit,
+//               recognizable "unavailable" result (never passed off as a turn, never silently defaulted).
+// Returns { ok:true, turn, grounding } | { ok:false, reason }.
+const REVEAL = /\b(i am|i'm|im)\s+(a |the |one of the )?(saboteurs?|impostors?|imposters?)\b|\bi (killed|murdered)\b/i;
+const hasWords = s => /[A-Za-z]{2,}/.test(s);
+const mentions = (text, n) => new RegExp('\\b' + n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(text);
+
 export function validateTurn(obj, req) {
   if (!isPlain(obj)) return { ok: false, reason: 'schema:not_object' };
+  if (obj.unavailable === true) return { ok: false, reason: 'behavior:model_declined' };
   for (const k of FIELDS) if (!(k in obj)) return { ok: false, reason: 'schema:missing_' + k };
-  const targets = Array.isArray(req && req.targets) ? req.targets.filter(t => typeof t === 'string') : [];
-  const options = req && isPlain(req.ext) && Array.isArray(req.ext.options) ? req.ext.options.filter(t => typeof t === 'string') : null;
+  const targets = req.targets, options = req.options || [];
 
   const say = obj.say;
   if (!okText(say, LIMITS.say)) return { ok: false, reason: 'schema:say' };
 
   const vote = obj.vote;
   if (!(vote === null || vote === 'skip' || (typeof vote === 'string' && targets.includes(vote)))) return { ok: false, reason: 'schema:vote' };
-  // a vote is allowed in either phase; the client decides when it counts
 
   const b = obj.beliefs;
   if (!isPlain(b)) return { ok: false, reason: 'schema:beliefs' };
@@ -89,18 +96,41 @@ export function validateTurn(obj, req) {
   if (!okText(obj.plan, LIMITS.plan)) return { ok: false, reason: 'schema:plan' };
 
   const act = obj.act;
-  if (options && options.length) { if (!(act === null || (typeof act === 'string' && options.includes(act)))) return { ok: false, reason: 'schema:act' }; }
+  if (options.length) { if (!(act === null || (typeof act === 'string' && options.includes(act)))) return { ok: false, reason: 'schema:act' }; }
   else if (act !== null) return { ok: false, reason: 'schema:act' };
 
-  // extra top-level fields are dropped (never passed on); only the five contract fields leave the worker
-  return { ok: true, turn: { say, vote, beliefs: Object.fromEntries(bk.map(k => [k, b[k]])), plan: obj.plan, act } };
+  // ---- behavior (phase-aware)
+  const beliefs = Object.fromEntries(bk.map(k => [k, b[k]]));
+  let turn = { say, vote, beliefs, plan: obj.plan, act };
+  if (req.role === 'saboteur' && REVEAL.test(say)) return { ok: false, reason: 'behavior:self_reveal' };
+  if (req.partners && req.partners.length && (req.partners.includes(vote) || req.partners.some(p => beliefs[p] === 'suspect'))) return { ok: false, reason: 'behavior:betrays_partner' };
+  if (req.phase === 'play') {
+    if (act === null) return { ok: false, reason: 'behavior:no_act' };
+    turn = Object.assign(turn, { say: '', vote: null }); // nobody hears chat outside a meeting; no vote exists. Dropped, not invented.
+  } else {
+    if (req.phase === 'discussion' && !hasWords(say)) return { ok: false, reason: 'behavior:silent' };
+    if (req.phase === 'voting' && vote === null) return { ok: false, reason: 'behavior:no_vote' };
+    // a vote (cast, or pre-committed during discussion) must match the bot's own stated beliefs
+    if (vote !== null && vote !== 'skip' && beliefs[vote] !== 'suspect') return { ok: false, reason: 'behavior:vote_belief' };
+  }
+  // grounding: which evidence names the turn actually uses (diagnostic only)
+  const evid = evidenceNamesOf(req);
+  const used = evid.filter(n => mentions(turn.say, n) || n in beliefs || turn.vote === n || (turn.act || '').endsWith(':' + n));
+  // Not a rejection: the model owns interpretation of evidence, including weighing or withholding it (owner rule).
+  // grounding.used = [] with evidence present is reported so a live test can measure it.
+  return { ok: true, turn, grounding: { evidence: evid, used } };
 }
 
-// Full pipeline used by the worker.
+function evidenceNamesOf(req) {
+  const own = (req.evidence || []).filter(x => !/^Public history/i.test(x)).join('\n');
+  return req.targets.filter(t => mentions(own, t));
+}
+
+// Full pipeline used by the worker (req = normalized request).
 export function handleReply(raw, req) {
   const c = extractCandidate(raw);
   if (!c.ok) return { ok: false, reason: 'extract:' + c.reason, shape: c.shape };
   const v = validateTurn(c.obj, req);
-  if (!v.ok) return { ok: false, reason: v.reason, shape: c.shape, via: c.via };
-  return { ok: true, turn: v.turn, via: c.via };
+  if (!v.ok) return { ok: false, unavailable: v.reason.startsWith('behavior:'), reason: v.reason, shape: c.shape, via: c.via };
+  return { ok: true, turn: v.turn, grounding: v.grounding, via: c.via };
 }

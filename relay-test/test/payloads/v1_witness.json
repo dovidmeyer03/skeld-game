@@ -1,0 +1,60 @@
+{
+ "botId": "Pink",
+ "meeting": {
+  "phase": "discussion",
+  "round": 1,
+  "accused": "Pink",
+  "dead": [
+   "Red"
+  ]
+ },
+ "memories": [
+  "You are crew. You only know what you saw yourself.",
+  "You were in the hallway around that time.",
+  "You SAW White kill Red in Med Lab (before this meeting)."
+ ],
+ "chat": [
+  {
+   "speaker": "System",
+   "text": "Green called an emergency meeting."
+  },
+  {
+   "speaker": "Pink",
+   "text": "I SAW White KILL Red in Med Lab!"
+  },
+  {
+   "speaker": "Blue",
+   "text": "I was walking through the hallway."
+  },
+  {
+   "speaker": "White",
+   "text": "I was doing tasks in Reactor Core."
+  },
+  {
+   "speaker": "Pink",
+   "text": "I was in the hallway."
+  },
+  {
+   "speaker": "Yellow",
+   "text": "I was in the hallway."
+  },
+  {
+   "speaker": "Orange",
+   "text": "I was in the hallway."
+  },
+  {
+   "speaker": "White",
+   "text": "No way. Pink is the Saboteur, trying to frame me."
+  }
+ ],
+ "targets": [
+  "Green",
+  "Blue",
+  "Purple",
+  "White",
+  "Cyan",
+  "Yellow",
+  "Lime",
+  "Orange"
+ ]
+}

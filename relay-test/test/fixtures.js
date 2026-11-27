@@ -1,7 +1,10 @@
 // Offline fixtures for model-reply handling. No network, no provider.
 // expect: 'accept' or the exact rejection reason. Covers the plausible shapes behind the 5/5 live 502s.
-const REQ = { botId: 3, meeting: { phase: 'discuss' }, memories: [], chat: [], targets: ['Red', 'Blue', 'Lime'] };
-const REQ_OPTS = Object.assign({}, REQ, { ext: { v: 1, options: ['task:Med Lab', 'go:Records', 'wander'] } });
+// Requests are now in the game's real v1 shape (identity + role line), normalized by contract.js before use.
+// The extraction/schema expectations are unchanged from the previous suite.
+const REQ = { botId: 'Lime', meeting: { phase: 'discussion', round: 1 }, memories: ['You are crew. You only know what you saw yourself.'], chat: [], targets: ['Red', 'Blue', 'Cyan'] };
+// options only exist in the play phase (play-phase decisions); there say is dropped and act is required
+const REQ_OPTS = Object.assign({}, REQ, { meeting: { phase: 'play', round: 1 }, ext: { v: 1, options: ['task:Med Lab', 'go:Records', 'wander'] } });
 const GOOD = { say: 'I was in Med Lab with Blue.', vote: null, beliefs: { Red: 'unsure' }, plan: 'Stay with Blue near Med Lab.', act: null };
 const j = o => JSON.stringify(o);
 const big = j(GOOD);

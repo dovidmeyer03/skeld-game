@@ -1,0 +1,67 @@
+{
+ "botId": "Green",
+ "meeting": {
+  "phase": "discussion",
+  "round": 1,
+  "accused": "",
+  "dead": []
+ },
+ "memories": [
+  "You are crew. You only know what you saw yourself.",
+  "You were in the hallway around that time.",
+  "You watched Yellow do a visual task in Med Lab (before this meeting): they are crew."
+ ],
+ "chat": [
+  {
+   "speaker": "System",
+   "text": "White called an emergency meeting."
+  },
+  {
+   "speaker": "Red",
+   "text": "I was walking through the hallway."
+  },
+  {
+   "speaker": "Lime",
+   "text": "Just doing my tasks in Lower Engine."
+  },
+  {
+   "speaker": "Purple",
+   "text": "I was in the hallway."
+  },
+  {
+   "speaker": "Yellow",
+   "text": "I was walking through the hallway."
+  },
+  {
+   "speaker": "Blue",
+   "text": "I was in the hallway."
+  },
+  {
+   "speaker": "Pink",
+   "text": "I was walking through the hallway."
+  },
+  {
+   "speaker": "Orange",
+   "text": "I was walking through the hallway."
+  },
+  {
+   "speaker": "Green",
+   "text": "I watched Yellow do the scan in Med Lab. Yellow is confirmed crew."
+  },
+  {
+   "speaker": "Orange",
+   "text": "I think Yellow is suspicious."
+  }
+ ],
+ "targets": [
+  "White",
+  "Red",
+  "Cyan",
+  "Lime",
+  "Orange",
+  "Pink",
+  "Purple",
+  "Yellow",
+  "Blue"
+ ]
+}

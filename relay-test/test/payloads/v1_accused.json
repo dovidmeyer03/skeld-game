@@ -1,0 +1,63 @@
+{
+ "botId": "Cyan",
+ "meeting": {
+  "phase": "discussion",
+  "round": 1,
+  "accused": "Lime",
+  "dead": []
+ },
+ "memories": [
+  "You are crew. You only know what you saw yourself.",
+  "You were in the hallway around that time.",
+  "You saw Green in Records about 56s before the meeting."
+ ],
+ "chat": [
+  {
+   "speaker": "System",
+   "text": "Lime called an emergency meeting."
+  },
+  {
+   "speaker": "Green",
+   "text": "I was in the hallway."
+  },
+  {
+   "speaker": "Yellow",
+   "text": "I was walking through the hallway."
+  },
+  {
+   "speaker": "Purple",
+   "text": "I was in the hallway."
+  },
+  {
+   "speaker": "Orange",
+   "text": "I was in the hallway."
+  },
+  {
+   "speaker": "Blue",
+   "text": "I was doing tasks in Med Lab."
+  },
+  {
+   "speaker": "Blue",
+   "text": "Where was Lime? Kind of sus."
+  },
+  {
+   "speaker": "Pink",
+   "text": "I was walking through the hallway."
+  },
+  {
+   "speaker": "White",
+   "text": "Cyan is sus, I saw Cyan near the vent in Cargo Bay."
+  }
+ ],
+ "targets": [
+  "Lime",
+  "Purple",
+  "Pink",
+  "Blue",
+  "White",
+  "Orange",
+  "Green",
+  "Yellow",
+  "Red"
+ ]
+}

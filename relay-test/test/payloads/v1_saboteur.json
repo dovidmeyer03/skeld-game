@@ -1,0 +1,66 @@
+{
+ "botId": "Purple",
+ "meeting": {
+  "phase": "discussion",
+  "round": 1,
+  "accused": "",
+  "dead": []
+ },
+ "memories": [
+  "You are secretly a Saboteur. Never reveal it; blend in and act like a crewmate.",
+  "Your claimed location for this meeting: Shield Room."
+ ],
+ "chat": [
+  {
+   "speaker": "System",
+   "text": "Lime called an emergency meeting."
+  },
+  {
+   "speaker": "White",
+   "text": "I was walking through the hallway."
+  },
+  {
+   "speaker": "Green",
+   "text": "I was in the hallway."
+  },
+  {
+   "speaker": "Orange",
+   "text": "I was walking through the hallway."
+  },
+  {
+   "speaker": "Yellow",
+   "text": "I was walking through the hallway."
+  },
+  {
+   "speaker": "Blue",
+   "text": "I was walking through the hallway."
+  },
+  {
+   "speaker": "Cyan",
+   "text": "I was in the hallway."
+  },
+  {
+   "speaker": "Purple",
+   "text": "I was in Shield Room."
+  },
+  {
+   "speaker": "Red",
+   "text": "I was in the hallway."
+  },
+  {
+   "speaker": "Yellow",
+   "text": "Where was everyone? Purple?"
+  }
+ ],
+ "targets": [
+  "Lime",
+  "Cyan",
+  "Yellow",
+  "Blue",
+  "White",
+  "Orange",
+  "Green",
+  "Pink",
+  "Red"
+ ]
+}

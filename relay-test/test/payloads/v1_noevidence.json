@@ -1,0 +1,58 @@
+{
+ "botId": "Blue",
+ "meeting": {
+  "phase": "discussion",
+  "round": 1,
+  "accused": "Yellow",
+  "dead": []
+ },
+ "memories": [
+  "You are crew. You only know what you saw yourself.",
+  "You were in the hallway around that time."
+ ],
+ "chat": [
+  {
+   "speaker": "System",
+   "text": "Pink called an emergency meeting."
+  },
+  {
+   "speaker": "Green",
+   "text": "Just doing my tasks in Med Lab."
+  },
+  {
+   "speaker": "Green",
+   "text": "Where was Yellow? Kind of sus."
+  },
+  {
+   "speaker": "Cyan",
+   "text": "I was walking through the hallway."
+  },
+  {
+   "speaker": "Red",
+   "text": "I was walking through the hallway."
+  },
+  {
+   "speaker": "Blue",
+   "text": "I was walking through the hallway."
+  },
+  {
+   "speaker": "White",
+   "text": "I was in the hallway."
+  },
+  {
+   "speaker": "Yellow",
+   "text": "It wasn't me! I was in the hallway."
+  }
+ ],
+ "targets": [
+  "Pink",
+  "Lime",
+  "Red",
+  "Cyan",
+  "Green",
+  "Orange",
+  "White",
+  "Yellow",
+  "Purple"
+ ]
+}

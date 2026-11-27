@@ -7,25 +7,18 @@
 const ROOM = 'TESTAI1';
 const MODEL = '@cf/meta/llama-3.1-8b-instruct-fp8-fast'; // the only model this worker can call
 const BUDGET_CAP = 5;          // code constant; per mode (budget:dryrun, budget:real); no route can change or reset it
-const MAX_INPUT_CHARS = 4000;  // SYSTEM_PROMPT.length + request body length must stay below this
+const MAX_INPUT_CHARS = 4000;  // system prompt length + request body length must stay below this
 const MAX_TOKENS = 400;        // output cap on the model call
 const TIMEOUT_MS = 8000;       // provider timeout; the reservation is kept on timeout
 const LOCK_MS = 20000;         // sequential only: one call in flight; a stuck lock expires after this
 const TOKEN_RX = /^[A-Za-z0-9_-]{16,128}$/;
 
-// Kept short on purpose (input cap is shared with the request) and explicit about the output form.
-const SYSTEM_PROMPT = `You are one bot player in a social deduction game meeting. Output ONLY one JSON object: no prose, no markdown, no code fences, nothing before or after it. Keys, all required:
-"say": one short chat line (max 200 chars) or "".
-"vote": a name from "targets", "skip", or null.
-"beliefs": object, at most 3 entries, name from "targets" -> "trust"|"suspect"|"unsure"; {} if none.
-"plan": one short sentence (max 100 chars).
-"act": a string copied exactly from "ext.options" if present, else null.
-Use only your own memories and the chat. Glimpses are weak evidence. Never invent sightings.`;
-
-// Fixed dry-run reply: matches the {say, vote, beliefs, plan, act} contract; no model is called.
-const DRYRUN_REPLY = { say: 'Dry run: I have nothing new to add.', vote: 'skip', beliefs: {}, plan: 'Do my tasks and stay with others.', act: null };
-
 import { handleReply } from './turn.js';
+import { normalizeRequest } from './contract.js';
+import { buildMessages, buildSystem, dryReply } from './prompt.js';
+
+// longest system prompt any role/phase can produce (for the pre-read Content-Length check)
+const MAX_SYSTEM = Math.max(...['crew', 'saboteur'].flatMap(role => ['discussion', 'voting', 'play'].map(phase => buildSystem({ name: 'XXXXXXXXXXXXXX', role, phase }).length)));
 
 const json = (status, obj) => new Response(JSON.stringify(obj), { status, headers: { 'content-type': 'application/json' } });
 
@@ -56,10 +49,14 @@ export default {
     if (!hostOk.ok) return json(403, { error: 'forbidden' });
 
     const len = +req.headers.get('content-length');
-    if (len && SYSTEM_PROMPT.length + len >= MAX_INPUT_CHARS) return json(413, { error: 'too_large', limit: MAX_INPUT_CHARS - SYSTEM_PROMPT.length - 1 });
+    if (len && MAX_SYSTEM + len >= MAX_INPUT_CHARS) return json(413, { error: 'too_large', limit: MAX_INPUT_CHARS - MAX_SYSTEM - 1 });
     const body = await req.text();
-    if (SYSTEM_PROMPT.length + body.length >= MAX_INPUT_CHARS) return json(413, { error: 'too_large', limit: MAX_INPUT_CHARS - SYSTEM_PROMPT.length - 1 });
+    if (MAX_SYSTEM + body.length >= MAX_INPUT_CHARS) return json(413, { error: 'too_large', limit: MAX_INPUT_CHARS - MAX_SYSTEM - 1 });
     let reqObj; try { reqObj = JSON.parse(body); if (!reqObj || typeof reqObj !== 'object' || Array.isArray(reqObj)) throw 0; } catch (_) { return json(400, { error: 'bad_json' }); }
+    // a request the model cannot act on (no identity, no role, options outside play, ...) is refused before any reservation
+    const nr = normalizeRequest(reqObj);
+    if (!nr.ok) return json(400, { error: 'bad_request', reason: nr.reason });
+    const nreq = nr.req, messages = buildMessages(nreq);
 
     // Reserve BEFORE any provider invocation. Never refunded.
     const dry = env.DRYRUN === '1';
@@ -71,11 +68,13 @@ export default {
     }
     try {
       // dry run feeds the fixed reply through the same extraction + validation as a real one
-      const raw = dry ? JSON.stringify(DRYRUN_REPLY) : await callModel(env, body);
-      const h = handleReply(raw, reqObj);
+      const raw = dry ? JSON.stringify(dryReply(nreq)) : await callModel(env, messages);
+      const h = handleReply(raw, nreq);
+      // well-formed but useless/inconsistent for this phase: an explicit fallback signal, never a fake turn
+      if (!h.ok && h.unavailable) return json(200, { unavailable: true, reason: h.reason, via: h.via, dryrun: dry, mode: r.mode, used: r.used, cap: BUDGET_CAP });
       // rejection: reason code + shape facts only; the model's text is never returned or stored
       if (!h.ok) return json(502, { error: 'bad_model_output', reason: h.reason, shape: h.shape, via: h.via, mode: r.mode, used: r.used, cap: BUDGET_CAP });
-      return json(200, Object.assign({}, h.turn, { via: h.via, dryrun: dry, mode: r.mode, used: r.used, cap: BUDGET_CAP }));
+      return json(200, Object.assign({}, h.turn, { grounding: h.grounding, via: h.via, dryrun: dry, mode: r.mode, used: r.used, cap: BUDGET_CAP }));
     } catch (e) {
       const to = e && e.message === 'timeout';
       return json(to ? 504 : 502, { error: to ? 'timeout' : 'provider_error', mode: r.mode, used: r.used, cap: BUDGET_CAP });
@@ -85,9 +84,9 @@ export default {
   }
 };
 
-async function callModel(env, body) {
+async function callModel(env, messages) {
   const run = env.AI.run(MODEL, {
-    messages: [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content: body }],
+    messages,
     max_tokens: MAX_TOKENS
   });
   const out = await Promise.race([run, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), TIMEOUT_MS))]);
