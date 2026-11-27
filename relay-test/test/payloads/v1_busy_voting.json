@@ -1,0 +1,80 @@
+{
+ "botId": "Purple",
+ "meeting": {
+  "phase": "voting",
+  "round": 9,
+  "accused": "Green",
+  "dead": [
+   "White"
+  ]
+ },
+ "memories": [
+  "You are crew. You only know what you saw yourself.",
+  "Notes from earlier meetings are clues, not proof. New evidence can change your view.",
+  "You were in the hallway around that time.",
+  "You SAW Green kill White in Med Lab (before meeting 1).",
+  "You watched Pink do a visual task in Med Lab (before meeting 1): they are crew.",
+  "You saw Green come out of a vent in Cargo Bay (before meeting 1).",
+  "This round you saw Yellow in a different place than what they claimed. It might be a lie, or a mix-up.",
+  "This round you saw Red in a different place than what they claimed. It might be a lie, or a mix-up.",
+  "In meeting 3 you voted for Yellow; Yellow was not ejected.",
+  "In meeting 8 you voted for Yellow; Yellow was not ejected.",
+  "In meeting 4 you voted for Yellow; Yellow was not ejected.",
+  "Meeting 7 outcome: nobody was ejected (skipped, 8 skip votes).",
+  "In meeting 8, Green said: \"Meeting 4: I think Cyan is suspicious, I saw them near Cargo Bay twice before the body.\"",
+  "In meeting 8, Yellow said: \"Meeting 4: I think Green is suspicious, I saw them near Records twice before the body.\"",
+  "In meeting 8, White said: \"Meeting 4: I think Yellow is suspicious, I saw them near Med Lab twice before the body.\"",
+  "In meeting 8, Blue said: \"Meeting 4: I think White is suspicious, I saw them near Reactor Core twice before the bo…\"",
+  "Meeting 8 outcome: nobody was ejected (skipped, 8 skip votes). Unresolved: the accusation against Cyan, Green, Yellow, White, Blue, Pink.",
+  "You glimpsed Cyan in passing in Observatory about 41s before the meeting - they may have only been walking through.",
+  "You saw Pink in Observatory about 33s before the meeting.",
+  "You glimpsed Blue in passing in Cargo Bay about 29s before the meeting - they may have only been walking through.",
+  "You glimpsed Orange in passing in the hall by Records about 27s before the meeting - they may have only been walking through.",
+  "You glimpsed Yellow in passing in Records about 15s before the meeting - they may have only been walking through.",
+  "You glimpsed Red in passing in Med Lab about 3s before the meeting - they may have only been walking through."
+ ],
+ "chat": [
+  {
+   "speaker": "Green",
+   "text": "Line 26: I was doing my tasks in Records and walked through the hallway, nobody else was there and I did not see the body until the report was called by Cyan."
+  },
+  {
+   "speaker": "Yellow",
+   "text": "Line 27: I was doing my tasks in Med Lab and walked through the hallway, nobody else was there and I did not see the body until the report was called by Cyan."
+  },
+  {
+   "speaker": "Blue",
+   "text": "Line 28: I was doing my tasks in Reactor Core and walked through the hallway, nobody else was there and I did not see the body until the report was called by Cyan."
+  },
+  {
+   "speaker": "Pink",
+   "text": "Line 29: I was doing my tasks in Observatory and walked through the hallway, nobody else was there and I did not see the body until the report was called by Cyan."
+  },
+  {
+   "speaker": "Red",
+   "text": "Purple, Line 30: I was doing my tasks in Cargo Bay and walked through the hallway, nobody else was there and I did not see the body until the report was called by Cyan."
+  },
+  {
+   "speaker": "Purple",
+   "text": "Line 31: I was doing my tasks in Records and walked through the hallway, nobody else was there and I did not see the body until the report was called by Cyan."
+  },
+  {
+   "speaker": "Orange",
+   "text": "Line 32: I was doing my tasks in Med Lab and walked through the hallway, nobody else was there and I did not see the body until the report was called by Cyan."
+  },
+  {
+   "speaker": "Cyan",
+   "text": "Line 33: I was doing my tasks in Reactor Core and walked through the hallway, nobody else was there and I did not see the body until the report was called by Cyan."
+  }
+ ],
+ "targets": [
+  "Lime",
+  "Orange",
+  "Cyan",
+  "Green",
+  "Yellow",
+  "Blue",
+  "Pink",
+  "Red"
+ ]
+}

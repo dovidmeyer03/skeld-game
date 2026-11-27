@@ -2,11 +2,20 @@
 
 No provider calls, deploys or credentials were used for anything in this report. Offline fixtures **cannot prove live behavior**: they prove what the worker sends to the model and what it accepts or rejects. The model's behavior needs a future live test.
 
-Run `node test/run.js` (Node 18+, no network). It has 138 checks:
-- 49 extraction and schema checks;
-- 8 request-contract checks;
-- 56 prompt-property checks across 7 real payloads;
-- 25 behavior checks.
+Run `node test/run.js` (Node 18+, no network). It has 191 checks:
+
+| Suite | Checks |
+|---|---|
+| Extraction and schema | 49 |
+| Request contract | 8 |
+| Prompt properties, across 9 real payloads | 81 |
+| Busy-meeting fitting | 14 |
+| End to end through the worker's own `fetch` handler (offline in-memory stubs, dry run) | 14 |
+| Behavior | 25 |
+
+Of the earlier 138 checks:
+- **131 are unchanged.**
+- **7 were redefined:** the per-payload "system + raw body < 4,000" check became "fitted model input < 4,000", because the cap moved (see *Input budget*).
 
 `node test/old_compare.js` replays the first deployed build's logic.
 
@@ -18,6 +27,9 @@ Run `node test/run.js` (Node 18+, no network). It has 138 checks:
 | 2 | 5/5 `200` via `"object"` | Workers AI returns an already-parsed object for this model, which fully explains retest 1. Every turn was schema-valid but empty: `say:""`, `vote:null`, `beliefs:{}`, `act:null`; `plan` empty or generic |
 
 ## Why the turns were empty (ranked, with evidence)
+
+> **Scope of this finding.** The five passive live turns answered an **invalid hand-written payload**: no identity (`botId: 3`), no role, and movement options inside a meeting. They do **not** show that the game's real bots are passive, and they say **nothing about game readiness**. The real game payload has not been sent to a live model yet. Do not generalize these five turns.
+
 
 1. **The request did not match the game's contract, and lacked identity and role.** Strong evidence: comparing the hand-written body with what the game actually sends (payloads captured from its own `aiBody` / `aiDecideBody`, now in `test/payloads/`):
 
@@ -85,17 +97,57 @@ Run `node test/run.js` (Node 18+, no network). It has 138 checks:
 
 All 49 earlier extraction and schema fixtures keep their expectations. Their request was updated to the game's real shape (identity + role line); the two option fixtures now use the play phase.
 
+## Input budget: design (decided here)
+
+**Problem:** the game client packs each AI request to at most **4,000 bytes** (`packBody` in `index.html`, so it also fits the production worker's 4,096-byte body limit). The test worker's first cap, *system prompt + raw body < 4,000*, would have answered real busy meetings with 413.
+
+**Choice:** cap what the **model** receives, not the transport.
+- **`MAX_INPUT_CHARS` = 4,000 on the model input:** system prompt + rendered brief, measured after rendering. This keeps the per-call cost bound the cap was for.
+- **`MAX_BODY_CHARS` = 24,000 on the raw request:** above the largest body the contract can use (30 chat × 280, 40 memories × 300, 12 targets, 8 options). It only bounds parsing; the model never sees the raw body.
+- **No client change is needed:** real game traffic (≤ 4,000 bytes) always passes the transport cap.
+
+**Fitting (`fitMessages`):** the rendered brief is reduced, lowest-value material first, until system + brief < 4,000. Every step leaves a **visible marker in the brief**, and the response tells the caller in `omitted: {chat, public, sightings, votes, other, shortened}`.
+
+| Order | What is reduced | Marker |
+|---|---|---|
+| 1 | Chat older than the newest 8 that does not mention the bot | "(N older messages omitted to fit)" |
+| 2 | Public notes ("Public history…", "In meeting N, X said…", "Meeting N outcome…"), oldest first | "(N older public notes omitted to fit)" |
+| 3 | Glimpses ("You glimpsed…"), oldest first | "(N older sightings omitted to fit)" |
+| 4 | Long chat lines (except the newest 3) shortened to about 140 chars | "…[shortened]" on the line, and a count in the chat header |
+| 5 | Chat down to the newest 4 | "(N older messages omitted to fit)" |
+| 6 | Sightings ("You saw … in …"), oldest first | "(N older sightings omitted to fit)" |
+| 7 | Own vote records, then other notes, oldest first | "(N older records of your votes omitted to fit)" / "(N older notes omitted to fit)" |
+| 8 | Chat down to the newest 1 | "(N older messages omitted to fit)" |
+
+**Never reduced:**
+- the bot's identity, role notes, players, dead and the accusation warning;
+- protected evidence: "You SAW … kill", a visual task, a vent, tracker, vitals, alibi contradictions, "You were in…", "You last saw…";
+- the event and the options with their meanings;
+- the newest chat message.
+
+If even that core exceeds the cap, the worker returns `413 {reason: "cannot_fit", size, limit}` **before** any reservation. That is the explicit overflow path, and it is tested with 18 long witnessed-kill lines.
+
+**Why this order:** it follows the classes the game itself writes (`memClasses`) and its own packing order (`packBody` trims old chat first, then public notes and sightings, and keeps role and hard evidence). Messages addressed to the bot are kept longer than others.
+
+**Measured on real and busy payloads:**
+
+| Payload | Model input (chars) | Omitted |
+|---|---|---|
+| The 7 ordinary captured game payloads | 1,138–1,624 | nothing |
+| Busy game payloads (captured from `aiBody`/`packBody` at ~3,830 bytes, round 4–5, 23 memories) | about 3,890 | 5 public notes |
+| Synthetic v2 at the protocol limits (12 targets, 30 × 280-char chat, 35 memories) | 3,904 | 20 chat lines, 16 public notes and 5 sightings, with 7 lines shortened. All protected evidence, all 12 players, and the newest and bot-addressed messages are intact |
+
+**Remaining silent loss, outside the worker:** the game client's own `packBody` already drops old chat and notes **silently** to fit its 4,000 bytes. Those lines never reach the worker, so the worker cannot mark them.
+- **Recommended client change (not made; `index.html` was not touched):** when `packBody` trims, add one memory line such as "N older chat messages and M older notes were left out."
+- It stays within the production worker's limits.
+
 ## Known gaps / needs a future live test
 
 - **Whether the model now produces useful turns:** non-empty, grounded, consistent. Measure:
   - the share of `200` turns vs `unavailable` (with reasons) vs `502`;
   - the `grounding.used` rate when evidence is present;
   - whether voting turns pick consistent targets.
-- **Input cap vs the real client:**
-  - the longest system prompt (858) leaves **3,141 characters** for the request body;
-  - the game's `packBody` packs up to **4,000 bytes**, so a busy meeting from the real client would get **413**;
-  - the 7 captured payloads are 536–1,100 bytes and pass.
-  - Before using the real client, either lower the client's packing budget to about 3,100, or move the cap to the rendered brief. That is the owner's decision; the cap was kept as specified.
+- **Input fitting:** the omission markers are visible to the model, but whether this model handles them well is untested.
 - **Unverified prompt effects:** whether this model follows the per-phase rules, whether `beliefs` stays within 6 entries, and whether saboteur cover stories stay plausible.
 - **Truncation:** at `max_tokens` 400 with the richer prompt, truncation is still possible and would show as `extract:unbalanced`.
 - **Not attempted:** JSON mode / `response_format` (untested; a failure would still spend a reservation).

@@ -7,7 +7,10 @@
 const ROOM = 'TESTAI1';
 const MODEL = '@cf/meta/llama-3.1-8b-instruct-fp8-fast'; // the only model this worker can call
 const BUDGET_CAP = 5;          // code constant; per mode (budget:dryrun, budget:real); no route can change or reset it
-const MAX_INPUT_CHARS = 4000;  // system prompt length + request body length must stay below this
+const MAX_INPUT_CHARS = 4000;  // what the MODEL receives (system prompt + rendered brief) stays below this; see fitMessages
+const MAX_BODY_CHARS = 24000;  // transport cap on the raw request: above the largest body the contract can use
+                               // (30 chat x 280 + 40 memories x 300 + 12 targets + 8 options). Larger -> 413 body_too_large.
+                               // The model never sees the raw body; it gets the fitted brief (MAX_INPUT_CHARS).
 const MAX_TOKENS = 400;        // output cap on the model call
 const TIMEOUT_MS = 8000;       // provider timeout; the reservation is kept on timeout
 const LOCK_MS = 20000;         // sequential only: one call in flight; a stuck lock expires after this
@@ -15,10 +18,8 @@ const TOKEN_RX = /^[A-Za-z0-9_-]{16,128}$/;
 
 import { handleReply } from './turn.js';
 import { normalizeRequest } from './contract.js';
-import { buildMessages, buildSystem, dryReply } from './prompt.js';
+import { fitMessages, dryReply } from './prompt.js';
 
-// longest system prompt any role/phase can produce (for the pre-read Content-Length check)
-const MAX_SYSTEM = Math.max(...['crew', 'saboteur'].flatMap(role => ['discussion', 'voting', 'play'].map(phase => buildSystem({ name: 'XXXXXXXXXXXXXX', role, phase }).length)));
 
 const json = (status, obj) => new Response(JSON.stringify(obj), { status, headers: { 'content-type': 'application/json' } });
 
@@ -49,14 +50,19 @@ export default {
     if (!hostOk.ok) return json(403, { error: 'forbidden' });
 
     const len = +req.headers.get('content-length');
-    if (len && MAX_SYSTEM + len >= MAX_INPUT_CHARS) return json(413, { error: 'too_large', limit: MAX_INPUT_CHARS - MAX_SYSTEM - 1 });
+    if (len && len > MAX_BODY_CHARS * 4) return json(413, { error: 'too_large', reason: 'body_too_large', limit: MAX_BODY_CHARS });
     const body = await req.text();
-    if (MAX_SYSTEM + body.length >= MAX_INPUT_CHARS) return json(413, { error: 'too_large', limit: MAX_INPUT_CHARS - MAX_SYSTEM - 1 });
+    if (body.length > MAX_BODY_CHARS) return json(413, { error: 'too_large', reason: 'body_too_large', limit: MAX_BODY_CHARS });
     let reqObj; try { reqObj = JSON.parse(body); if (!reqObj || typeof reqObj !== 'object' || Array.isArray(reqObj)) throw 0; } catch (_) { return json(400, { error: 'bad_json' }); }
     // a request the model cannot act on (no identity, no role, options outside play, ...) is refused before any reservation
     const nr = normalizeRequest(reqObj);
     if (!nr.ok) return json(400, { error: 'bad_request', reason: nr.reason });
-    const nreq = nr.req, messages = buildMessages(nreq);
+    const nreq = nr.req;
+    // model input = system prompt + rendered brief, fitted under MAX_INPUT_CHARS with explicit omission markers;
+    // if even the protected core (identity, players, direct evidence, event, options) cannot fit: 413, before reservation
+    const fit = fitMessages(nreq, MAX_INPUT_CHARS);
+    if (!fit.ok) return json(413, { error: 'too_large', reason: 'cannot_fit', size: fit.size, limit: MAX_INPUT_CHARS });
+    const messages = fit.messages, omitted = fit.omitted;
 
     // Reserve BEFORE any provider invocation. Never refunded.
     const dry = env.DRYRUN === '1';
@@ -71,10 +77,10 @@ export default {
       const raw = dry ? JSON.stringify(dryReply(nreq)) : await callModel(env, messages);
       const h = handleReply(raw, nreq);
       // well-formed but useless/inconsistent for this phase: an explicit fallback signal, never a fake turn
-      if (!h.ok && h.unavailable) return json(200, { unavailable: true, reason: h.reason, via: h.via, dryrun: dry, mode: r.mode, used: r.used, cap: BUDGET_CAP });
+      if (!h.ok && h.unavailable) return json(200, { unavailable: true, reason: h.reason, omitted, via: h.via, dryrun: dry, mode: r.mode, used: r.used, cap: BUDGET_CAP });
       // rejection: reason code + shape facts only; the model's text is never returned or stored
-      if (!h.ok) return json(502, { error: 'bad_model_output', reason: h.reason, shape: h.shape, via: h.via, mode: r.mode, used: r.used, cap: BUDGET_CAP });
-      return json(200, Object.assign({}, h.turn, { grounding: h.grounding, via: h.via, dryrun: dry, mode: r.mode, used: r.used, cap: BUDGET_CAP }));
+      if (!h.ok) return json(502, { error: 'bad_model_output', reason: h.reason, shape: h.shape, omitted, via: h.via, mode: r.mode, used: r.used, cap: BUDGET_CAP });
+      return json(200, Object.assign({}, h.turn, { grounding: h.grounding, omitted, via: h.via, dryrun: dry, mode: r.mode, used: r.used, cap: BUDGET_CAP }));
     } catch (e) {
       const to = e && e.message === 'timeout';
       return json(to ? 504 : 502, { error: to ? 'timeout' : 'provider_error', mode: r.mode, used: r.used, cap: BUDGET_CAP });

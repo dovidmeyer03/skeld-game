@@ -4,7 +4,9 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { handleReply } from '../src/turn.js';
 import { normalizeRequest, isAccused } from '../src/contract.js';
-import { buildSystem, buildBrief, dryReply } from '../src/prompt.js';
+import { buildSystem, buildBrief, dryReply, fitMessages, evidenceClass } from '../src/prompt.js';
+import { BUSY } from './busy.js';
+import { makeEnv, post } from './worker_e2e.js';
 import { FIXTURES } from './fixtures.js';
 import { SCENARIOS, REQUESTS } from './behavior.js';
 
@@ -43,9 +45,62 @@ for (const f of readdirSync(dir).filter(x => x.endsWith('.json'))) {
   check('prompt', f + ': every evidence line and chat line reaches the model', req.evidence.every(e => brief.includes(e)) && (req.phase === 'play' || req.chat.every(c => brief.includes(c.text))));
   check('prompt', f + ': option meanings explained', req.options.every(o => new RegExp('- ' + o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ' = ').test(brief)));
   check('prompt', f + ': accused bot is told to answer', !(req.phase !== 'play' && isAccused(req)) || /being accused/.test(brief));
-  check('prompt', f + ': system + body under the 4,000-char cap', sys.length + body.length < 4000, `${sys.length}+${body.length}`);
+  const fit = fitMessages(req, 4000);
+  check('prompt', f + ': fitted model input under 4,000 chars', fit.ok && fit.size < 4000, fit.ok ? `${fit.size} chars, omitted ${JSON.stringify(fit.omitted)}` : fit.reason);
+  check('prompt', f + ': real payload end to end: every line reaches the model, or is explicitly marked', fit.ok && fitAccounts(req, fit));
   const d = handleReply(JSON.stringify(dryReply(req)), req);
   check('prompt', f + ': dry-run reply passes the same validation', d.ok, d.ok ? 'ok' : d.reason);
+}
+
+// (3b) fitting: busy meetings
+function fitAccounts(req, fit) {
+  const brief = fit.messages[1].content, om = fit.omitted;
+  // protected material always present
+  for (const e of req.evidence) if (['hard', 'now'].includes(evidenceClass(e)) && !brief.includes(e)) return false;
+  for (const t of req.targets) if (!brief.includes(t)) return false;
+  for (const o of req.options) if (!brief.includes(`- ${o} = `)) return false;
+  if (req.detail && !brief.includes(req.detail)) return false;
+  // every evidence line is either shown verbatim or counted in a visible marker
+  const shown = req.evidence.filter(e => brief.includes('- ' + e)).length;
+  const counted = (om.public || 0) + (om.sightings || 0) + (om.votes || 0) + (om.other || 0);
+  if (shown + counted !== req.evidence.length) return false;
+  for (const [k, w] of [['public', 'older public notes'], ['sightings', 'older sightings'], ['votes', 'older records of your votes'], ['other', 'older notes']])
+    if (!!om[k] !== brief.includes(`(${om[k]} ${w} omitted to fit)`)) return false;
+  if (req.phase !== 'play') {
+    const shownChat = req.chat.filter(c => brief.includes(`- ${c.speaker}: ${c.text}`)).length;
+    const shortened = (brief.match(/^- .* …\[shortened\]$/gm) || []).length; // chat lines only (the header also names the marker)
+    if (shortened !== (om.shortened || 0)) return false;
+    if (shownChat + shortened + (om.chat || 0) !== req.chat.length) return false;
+    if (!!om.chat !== /older messages omitted to fit/.test(brief)) return false;
+    if (req.chat.length && !brief.includes(req.chat[req.chat.length - 1].text)) return false; // newest message always intact
+  }
+  return true;
+}
+for (const bz of BUSY) {
+  if (bz.expect === 'body_too_large') continue; // checked through the worker below
+  const req = norm(bz.body), fit = fitMessages(req, 4000);
+  if (bz.expect === 'cannot_fit') { check('busy', bz.name, !fit.ok && fit.reason === 'cannot_fit', fit.ok ? 'fitted' : `413 ${fit.reason} (${fit.size} chars)`); continue; }
+  check('busy', bz.name + ': fits under 4,000', fit.ok && fit.size < 4000, fit.ok ? `${fit.size} chars` : fit.reason);
+  check('busy', bz.name + ': nothing silently lost', fit.ok && fitAccounts(req, fit), fit.ok ? 'omitted ' + JSON.stringify(fit.omitted) : '');
+  if (fit.ok && req.phase !== 'play') {
+    const brief = fit.messages[1].content, me = req.chat.filter(c => new RegExp('\\b' + req.name + '\\b').test(c.text));
+    check('busy', bz.name + ': messages addressed to the bot survive longer than others', me.filter(c => brief.includes(c.text.slice(0, 60))).length / Math.max(1, me.length) >= req.chat.filter(c => brief.includes(c.text.slice(0, 60))).length / req.chat.length);
+    check('busy', bz.name + ': accusation warning kept', !/WARNING/.test(buildBrief(req)) || /WARNING/.test(brief));
+  }
+  if (fit.ok) { const d = handleReply(JSON.stringify(dryReply(req)), req); check('busy', bz.name + ': dry-run turn validates', d.ok, d.ok ? 'ok' : d.reason); }
+}
+
+// (3c) end to end through the worker's fetch handler (offline stubs, dry run): real payloads + busy + oversize
+{
+  const env = makeEnv();
+  const all = readdirSync(dir).filter(x => x.endsWith('.json')).map(f => ({ name: f, body: readFileSync(new URL(f, dir), 'utf8'), expect: 200 }))
+    .concat(BUSY.map(b => ({ name: b.name, body: b.raw || JSON.stringify(b.body), expect: b.expect === 'fit' ? 200 : 413, reason: b.expect === 'fit' ? null : b.expect })));
+  for (const c of all) {
+    env.BUDGET = makeEnv().BUDGET; // fresh dry-run budget per case: this checks routing/fitting, not the cap
+    const r = await post(env, c.body);
+    const ok = r.status === c.expect && (c.expect !== 200 || (!r.json.unavailable && r.json.omitted !== undefined)) && (!c.reason || r.json.reason === c.reason);
+    check('worker', c.name, ok, `${r.status} ${r.json.reason || (r.json.unavailable ? 'unavailable' : 'turn')} omitted=${JSON.stringify(r.json.omitted || {})}`);
+  }
 }
 
 // (4) behavior properties
