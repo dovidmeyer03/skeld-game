@@ -25,7 +25,9 @@ function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random
 function rr(c,x,y,w,h,r){r=Math.min(r,w/2,h/2);c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}
 function circ(c,x,y,r){c.beginPath();c.arc(x,y,r,0,TAU);}
 function shade(hex,f){let n=parseInt(hex.slice(1),16);let r=n>>16,g=(n>>8)&255,b=n&255;const t=f<0?0:255,p=Math.abs(f);r=Math.round((t-r)*p+r);g=Math.round((t-g)*p+g);b=Math.round((t-b)*p+b);return'#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1);}
-function wrap(c,text,maxW){const words=text.split(' ');const out=[];let cur='';for(const w of words){const t=cur?cur+' '+w:w;if(c.measureText(t).width>maxW&&cur){out.push(cur);cur=w;}else cur=t;}if(cur)out.push(cur);return out;}
+/* Chat length: 280 characters, cut at a word boundary (with an ellipsis) instead of mid-word. */
+const CHAT_MAX=280;function clipChat(raw){const t=String(raw==null?'':raw).replace(/\s+/g,' ').trim();if(t.length<=CHAT_MAX)return t;const cut=t.slice(0,CHAT_MAX);const sp=cut.lastIndexOf(' ');return (sp>CHAT_MAX*0.6?cut.slice(0,sp):cut.slice(0,CHAT_MAX-1)).replace(/[\s,;:.-]+$/,'')+'…';}
+function wrap(c,text,maxW){const words=[];for(const w of String(text).split(' ')){if(c.measureText(w).width<=maxW){words.push(w);continue;}let cur='';for(const ch of w){if(cur&&c.measureText(cur+ch).width>maxW){words.push(cur);cur='';}cur+=ch;}if(cur)words.push(cur);}/* over-long words are broken so nothing runs past the panel */const out=[];let cur='';for(const w of words){const t=cur?cur+' '+w:w;if(c.measureText(t).width>maxW&&cur){out.push(cur);cur=w;}else cur=t;}if(cur)out.push(cur);return out;}
 function txt(c,s,x,y,size,col,align,bold,stroke){c.font=(bold?'800 ':'600 ')+size+'px system-ui,-apple-system,Segoe UI,Roboto,sans-serif';c.textAlign=align||'left';c.textBaseline='middle';if(stroke){c.lineJoin='round';c.lineWidth=stroke;c.strokeStyle='rgba(0,0,0,.85)';c.strokeText(s,x,y);}c.fillStyle=col||'#fff';c.fillText(s,x,y);}
 
 // ================= AUDIO =================
@@ -550,7 +552,7 @@ function onUp(x,y,id){
 // ================= MEETING CHAT INPUT =================
 for(const id of ['chatbox','mpbox']){document.querySelectorAll('#'+id).forEach(n=>n.remove());}
 const CHATBOX=document.createElement('div');CHATBOX.id='chatbox';CHATBOX.hidden=true;CHATBOX.style.cssText='position:fixed;display:none;z-index:5;gap:6px;align-items:center;box-sizing:border-box';
-CHATBOX.innerHTML='<input id="ci" maxlength="120" enterkeyhint="send" placeholder="Type a message…" autocomplete="off" autocorrect="off" style="flex:1;min-width:0;height:38px;box-sizing:border-box;border-radius:10px;border:2px solid #7f90c8;background:#f4f6fb;color:#111;font:600 15px system-ui,sans-serif;padding:0 10px"><button id="cs" style="height:38px;padding:0 16px;border-radius:10px;border:0;background:#3a6fd8;color:#fff;font:800 14px system-ui,sans-serif">SEND</button>';
+CHATBOX.innerHTML='<input id="ci" maxlength="280" enterkeyhint="send" placeholder="Type a message…" autocomplete="off" autocorrect="off" style="flex:1;min-width:0;height:38px;box-sizing:border-box;border-radius:10px;border:2px solid #7f90c8;background:#f4f6fb;color:#111;font:600 15px system-ui,sans-serif;padding:0 10px"><button id="cs" style="height:38px;padding:0 16px;border-radius:10px;border:0;background:#3a6fd8;color:#fff;font:800 14px system-ui,sans-serif">SEND</button>';
 document.body.appendChild(CHATBOX);const CI=document.getElementById('ci'),CSB=document.getElementById('cs');
 function sendChat(){const v=CI.value;CI.value='';CI.blur();if(!v.trim())return;if(G.mode==='play'){playerSayGhost(v);return;}playerSay(v);}
 CSB.addEventListener('click',e=>{e.preventDefault();sendChat();});CI.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();sendChat();}});
@@ -567,7 +569,7 @@ function chatClaims(text,sp){const M=G.M,A=G.agents;if(!M)return;const low=Strin
  if(room&&RX_SELF.test(low)){M.alibi[sp.id]=[room.name];const ins=[];for(const b of shuffle(A.filter(q=>q.alive&&!q.human&&!q.imp&&q!==sp))){const q=sightingsOf(b,sp.id,M.w0,M.w1);const bad=q.find(z=>z.room!==room.name&&!z.room.startsWith('the hall'));if(bad&&!q.some(z=>z.room===room.name)){ins.push({who:b.id,text:`That's not true, ${sp.name}. I saw you in ${bad.room}.`});M.claims.push({type:'contra',sp:b.id,target:sp.id});break;}}{const ok=scriptIns(M,ins);if(ok.length&&!M.aiOn)M.lines.splice(M.shown,0,...ok);}}}
 function skeptics(spId,tId){const pool=shuffle(G.agents.filter(b=>b.alive&&!b.human&&!b.imp&&b.id!==spId&&b.id!==tId));const r=Math.random();const n=r<0.3?0:r<0.8?1:2;return pool.slice(0,n);}
 const ASKWHY=['Why {T}? What did you see, {S}?','{S}, do you have any evidence?','Based on what, {S}?','Hold on. Why {T}?'];
-function playerSay(raw,spk){if(isClient()&&!spk){const t=String(raw).replace(/\s+/g,' ').trim().slice(0,120);const hq=NET.players.find(q=>q.isHost);if(t)netSend(hq&&hq.clientId?{type:'chat',to:hq.clientId,data:{text:t}}:{type:'chat',data:{text:t}});SFX.click();return;}const M=G.M,A=G.agents,p=spk||G.player;if(!M)return;if(!p.alive&&!NET.role)return;const text=String(raw).replace(/\s+/g,' ').trim().slice(0,120);if(!text)return;
+function playerSay(raw,spk){if(isClient()&&!spk){const t=clipChat(raw);const hq=NET.players.find(q=>q.isHost);if(t)netSend(hq&&hq.clientId?{type:'chat',to:hq.clientId,data:{text:t}}:{type:'chat',data:{text:t}});SFX.click();return;}const M=G.M,A=G.agents,p=spk||G.player;if(!M)return;if(!p.alive&&!NET.role)return;const text=clipChat(raw);if(!text)return;
  /* intro: hold the line and replay it through this same function the moment discussion opens (ghost flag decided then, by the same rule) */
  if(M.phase==='intro'){M.pendChat=M.pendChat||[];if(M.pendChat.length<40)M.pendChat.push({id:p.id,text});if(p===G.player)SFX.click();return;}
  /* results/eject: voting is closed, so show the line without claims, AI replies or votes; dead speakers stay ghost-only */
@@ -860,7 +862,7 @@ function meetingCanEnd(M){return G.agents.filter(a=>a.alive).every(a=>M.votes[a.
 const GB_R_WATCH=['Watching {A} do their tasks.','Following {A} for a bit.','{A} keeps wandering around.','Keeping an eye on {A}.','{A} has been busy down there.'];
 const GB_R_KNOW=['It was {K}. Watch {K} closely.','{K} got me in {R}. Nobody out there knows yet.','For the record: {K}, in {R}.'];
 const GB_R_QUIET=['Quiet up here. Anyone else watching?','Being a ghost is boring.','At least we can float through walls now.','I hope they finish their tasks soon.','Nice view from up here, at least.'];
-function gchPush(who,text,own){text=String(text||'').replace(/\s+/g,' ').trim().slice(0,120);if(!text)return;G.gch=G.gch||[];G.gch.push({who,text});if(G.gch.length>60)G.gch.splice(0,G.gch.length-60);if(own)SFX.click();else if(G.player&&!G.player.alive&&!G.gcOpen)SND.play('chat');}
+function gchPush(who,text,own){text=clipChat(text);if(!text)return;G.gch=G.gch||[];G.gch.push({who,text});if(G.gch.length>60)G.gch.splice(0,G.gch.length-60);if(own)SFX.click();else if(G.player&&!G.player.alive&&!G.gcOpen)SND.play('chat');}
 function gchLineFor(b){const kn=ghostKnows(b),living=G.agents.filter(a=>a.alive);G.gchSaid=G.gchSaid||{};const said=G.gchSaid[b.id]=G.gchSaid[b.id]||{};const recent=G.gchRecent||[];
  for(let k=0;k<5;k++){let t,usedKnow=false;
   if(kn&&!said.know&&k<2){t=fmt(pick(GB_R_KNOW),kn);usedKnow=true;}
@@ -876,7 +878,7 @@ function ghostRoundTick(dt){if(isClient()||G.mode!=='play')return;
  const t=gchLineFor(b);if(t==null)return;// stay quiet rather than repeat a line
  G.gchRN=(G.gchRN||0)+1;G.gchLast=b.id;G.gchRecent=(G.gchRecent||[]).concat(t).slice(-10);
  gchPush(b.id,t);}
-function playerSayGhost(raw){const p=G.player;if(!p||p.alive)return;const text=String(raw).replace(/\s+/g,' ').trim().slice(0,120);if(!text)return;
+function playerSayGhost(raw){const p=G.player;if(!p||p.alive)return;const text=clipChat(raw);if(!text)return;
  if(isClient()){const hq=NET.players.find(q=>q.isHost);netSend(hq&&hq.clientId?{type:'chat',to:hq.clientId,data:{text}}:{type:'chat',data:{text}});SFX.click();return;}
  gchPush(p.id,text,true);}
 // ===== ghost bots: dead bots chat among ghosts (scripted, local) on the ghost:true path; the living never receive it =====
@@ -1550,14 +1552,14 @@ function privFor(a){return{k:'priv',you:a.id,imp:a.imp?1:0,role:a.imp?null:(a.ro
 function inCamView(o){return inHall(o.x,o.y)&&CAMS.some(f=>Math.abs(o.x-f.x)<CAM_W/2+10&&Math.abs(o.y-f.y)<CAM_H/2+20);}
 function viewerSees(h,o){if(o===h)return true;if(G.mode!=='play')return true;if(h.onCams&&o.inVent==null&&inCamView(o))return true;if(h.ptrack===o.id)return true;if(h.imp&&o.imp&&o.inVent==null)return canSee(h,o,visR(h)+60);return canSee(h,o,visR(h)+30);}
 let SNAP_LN_ALL=null;
-function filterSnap(base,h){const sn=Object.assign({},base);if(!h.alive&&(G.gch||[]).length)sn.gc=G.gch.slice(-40).map(l=>[l.who,String(l.text).slice(0,160)]);if(sn.M&&SNAP_LN_ALL&&!h.alive)sn.M=Object.assign({},base.M,{ln:SNAP_LN_ALL});sn.a=base.a.map((r,i)=>{const o=G.agents[i];return viewerSees(h,o)?r:0;});sn.b=base.b.filter(b=>G.mode!=='play'||viewerSees(h,{x:b[1],y:b[2],inVent:null}));return sn;}
+function filterSnap(base,h){const sn=Object.assign({},base);if(!h.alive&&(G.gch||[]).length)sn.gc=G.gch.slice(-40).map(l=>[l.who,String(l.text).slice(0,300)]);if(sn.M&&SNAP_LN_ALL&&!h.alive)sn.M=Object.assign({},base.M,{ln:SNAP_LN_ALL});sn.a=base.a.map((r,i)=>{const o=G.agents[i];return viewerSees(h,o)?r:0;});sn.b=base.b.filter(b=>G.mode!=='play'||viewerSees(h,{x:b[1],y:b[2],inVent:null}));return sn;}
 function sendPriv(a){if(a&&a.remote&&isHost())sendTo(a.remote,privFor(a));}
 function buildSnap(){const r1=x=>Math.round(x*10)/10;
  const sn={k:'s',m:G.mode,t:r1(G.t),a:G.agents.map(a=>[Math.round(a.x),Math.round(a.y),a.face<0?-1:1,a.moving?1:0,a.alive?1:0,a.inVent!=null?1:0,a.vis==='scan'?1:0]),
   b:G.bodies.map(b=>[b.id,Math.round(b.x),Math.round(b.y),b.reported?1:0]),td:CFG.taskBar==='always'?G.tasksDone:CFG.taskBar==='meetings'?G.tasksShown:0,tt:G.tasksTotal,bc:Math.max(0,Math.round(G.buttonCD)),
   sh:G.shots.map(q=>[Math.round(q.x),Math.round(q.y),q.side,Math.round(q.t*100)/100]),cw:camsWatched()?1:0,vo:VENTS.filter(v=>v.open>0).map(v=>v.id)};
  if(G.sab){const S=G.sab;sn.sab={ty:S.type,t:r1(S.t),f:S.pts.map(q=>q.fixed?1:0),c:S.code,h:(S.held||[]).map(x=>x?1:0)};}
- if(G.mode==='meeting'&&G.M){const M=G.M;const shown=M.lines.slice(0,M.shown);const enc=l=>[l.who,String(l.text).slice(0,160),l.vid==null?-1:l.vid,l.ghost?1:0];let ln=shown.filter(l=>!l.ghost).slice(-50).map(enc);SNAP_LN_ALL=shown.some(l=>l.ghost)?shown.slice(-50).map(enc):null;
+ if(G.mode==='meeting'&&G.M){const M=G.M;const shown=M.lines.slice(0,M.shown);const enc=l=>[l.who,String(l.text).slice(0,300),l.vid==null?-1:l.vid,l.ghost?1:0];let ln=shown.filter(l=>!l.ghost).slice(-50).map(enc);SNAP_LN_ALL=shown.some(l=>l.ghost)?shown.slice(-50).map(enc):null;
   const ready=M.ready?Object.keys(M.ready).map(Number):[];
   sn.M={ai:G.aiStatus,kind:M.kind,c:M.caller.id,bd:M.body?M.body.id:-1,ph:M.phase,t:r1(M.t),dt:M.dtimer==null?null:r1(M.dtimer),vt:r1(M.timer||0),ln,vd:Object.keys(M.votes).map(Number),vT:M.voteT,cp:(composing()||remoteComposing())?1:0,rd:ready};
   if(M.res&&(M.phase==='results'||M.phase==='eject')){const R=M.res;sn.M.res={tv:Object.entries(M.votes).map(([v,t])=>[t==='skip'?'skip':+t,CFG.anonVotes?-1:+v]),ej:R.ej,why:R.why,conf:CFG.confirmEjects?1:0,ejImp:CFG.confirmEjects&&R.ej!=null&&G.agents[R.ej].imp?1:0,left:CFG.confirmEjects?G.agents.filter(q=>q.alive&&q.imp&&q.id!==R.ej).length:null};}
