@@ -1,0 +1,25 @@
+# Local dry-run testing only: wrangler.toml minus the [ai] binding (that binding makes `wrangler dev` need a Cloudflare token).
+# Use: npx wrangler dev -c wrangler.localtest.toml  (DRYRUN stays "1"; never used for deploy)
+# skeld-game-relay-test: separate worker for the bounded real-AI test. Shares nothing with skeld-game-relay.
+name = "skeld-game-relay-test"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+workers_dev = true          # reachable only at skeld-game-relay-test.<subdomain>.workers.dev; no routes, no custom domain
+
+[vars]
+DRYRUN = "1"                # "1" = fixed local reply, no model call (counts against budget:dryrun).
+                            # "0" = real model call (counts against budget:real). Flip via vars, no code change.
+
+[[durable_objects.bindings]]
+name = "BUDGET"
+class_name = "BudgetCounter"
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "TestRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["BudgetCounter", "TestRoom"]
+
+# Secret TEST_KEY is NOT set at deploy: the owner sets it in the Cloudflare dashboard. Unset/empty -> every request 403.
