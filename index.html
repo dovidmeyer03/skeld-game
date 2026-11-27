@@ -1793,12 +1793,17 @@ function aiBody(b,M){const A=G.agents;const C=memClasses(b,M);const body={botId:
  return packBody(body,C);}
 // 4000-byte budget. Order: oldest chat down to 6 lines; then round-robin oldest public note / oldest own sighting;
 // then remaining chat; then uncertain, own votes, this-meeting notes, oldest hard evidence. Role lines are never trimmed.
-function packBody(body,C){const fits=()=>{body.memories=memFlat(C);const s0=JSON.stringify(body);return byteLen(s0)<=4000?s0:null;};let str=fits();let rr=0;
- while(!str){if(body.chat.length>6)body.chat.shift();
-  else if(C.pub.length||C.sight.length){const k=(rr++%2===0)?(C.pub.length?'pub':'sight'):(C.sight.length?'sight':'pub');C[k].shift();}
-  else if(body.chat.length)body.chat.shift();
-  else if(C.unc.length)C.unc.shift();else if(C.vote.length)C.vote.shift();else if(C.now.length)C.now.pop();else if(C.hard.length)C.hard.shift();
-  else{C.role=C.role.map(x=>x.slice(0,80));body.targets=body.targets.slice(0,9);str=JSON.stringify(Object.assign(body,{memories:memFlat(C)}));break;}
+// Nothing is dropped silently: once anything is trimmed, one memory line right after the role lines says how much was
+// left out (counted exactly), and that line is inside the same 4000-byte check.
+function packBody(body,C){let dc=0,dm=0,dr=0,dt=0;
+ const mark=()=>{if(!(dc||dm||dr||dt))return null;const p=[];const n=(k,w)=>k+' '+w+(k===1?'':'s');if(dc)p.push(n(dc,'older chat message'));if(dm)p.push(n(dm,'older note'));if(dr)p.push(n(dr,'role note')+' shortened');if(dt)p.push(n(dt,'other player')+' not listed');return 'Left out to fit: '+p.join(', ')+'.';};
+ const mems=()=>{const m=memFlat(C),k=mark();if(k)m.splice(C.role.length,0,k);return m;};
+ const fits=()=>{body.memories=mems();const s0=JSON.stringify(body);return byteLen(s0)<=4000?s0:null;};let str=fits();let rr=0;
+ while(!str){if(body.chat.length>6){body.chat.shift();dc++;}
+  else if(C.pub.length||C.sight.length){const k=(rr++%2===0)?(C.pub.length?'pub':'sight'):(C.sight.length?'sight':'pub');C[k].shift();dm++;}
+  else if(body.chat.length){body.chat.shift();dc++;}
+  else if(C.unc.length){C.unc.shift();dm++;}else if(C.vote.length){C.vote.shift();dm++;}else if(C.now.length){C.now.pop();dm++;}else if(C.hard.length){C.hard.shift();dm++;}
+  else{dr=C.role.filter(x=>x.length>80).length;C.role=C.role.map(x=>x.slice(0,80));dt=Math.max(0,body.targets.length-9);body.targets=body.targets.slice(0,9);str=JSON.stringify(Object.assign(body,{memories:mems()}));break;}
   str=fits();}
  return str;}
 // ===== echo guard: drop an AI line that repeats the bot's own last line or a recent public line (no extra AI calls) =====
