@@ -13,16 +13,19 @@ const TIMEOUT_MS = 8000;       // provider timeout; the reservation is kept on t
 const LOCK_MS = 20000;         // sequential only: one call in flight; a stuck lock expires after this
 const TOKEN_RX = /^[A-Za-z0-9_-]{16,128}$/;
 
-const SYSTEM_PROMPT = `You play one crewmate bot in a social deduction game meeting. Reply with ONE JSON object only, no prose:
-{"say": string (one short chat line, max 200 chars, or "" to stay silent),
- "vote": one name from "targets", or "skip", or null if voting has not started,
- "beliefs": {name: "trust"|"suspect"|"unsure"} for players you have an opinion on,
- "plan": short string: what you intend to do next round,
- "act": one string copied exactly from "ext.options" if present, otherwise null}
-Use only your own memories and the chat. Memories phrased as glimpses are weak evidence. Never invent sightings.`;
+// Kept short on purpose (input cap is shared with the request) and explicit about the output form.
+const SYSTEM_PROMPT = `You are one bot player in a social deduction game meeting. Output ONLY one JSON object: no prose, no markdown, no code fences, nothing before or after it. Keys, all required:
+"say": one short chat line (max 200 chars) or "".
+"vote": a name from "targets", "skip", or null.
+"beliefs": object, at most 3 entries, name from "targets" -> "trust"|"suspect"|"unsure"; {} if none.
+"plan": one short sentence (max 100 chars).
+"act": a string copied exactly from "ext.options" if present, else null.
+Use only your own memories and the chat. Glimpses are weak evidence. Never invent sightings.`;
 
 // Fixed dry-run reply: matches the {say, vote, beliefs, plan, act} contract; no model is called.
 const DRYRUN_REPLY = { say: 'Dry run: I have nothing new to add.', vote: 'skip', beliefs: {}, plan: 'Do my tasks and stay with others.', act: null };
+
+import { handleReply } from './turn.js';
 
 const json = (status, obj) => new Response(JSON.stringify(obj), { status, headers: { 'content-type': 'application/json' } });
 
@@ -56,7 +59,7 @@ export default {
     if (len && SYSTEM_PROMPT.length + len >= MAX_INPUT_CHARS) return json(413, { error: 'too_large', limit: MAX_INPUT_CHARS - SYSTEM_PROMPT.length - 1 });
     const body = await req.text();
     if (SYSTEM_PROMPT.length + body.length >= MAX_INPUT_CHARS) return json(413, { error: 'too_large', limit: MAX_INPUT_CHARS - SYSTEM_PROMPT.length - 1 });
-    try { const o = JSON.parse(body); if (!o || typeof o !== 'object' || Array.isArray(o)) throw 0; } catch (_) { return json(400, { error: 'bad_json' }); }
+    let reqObj; try { reqObj = JSON.parse(body); if (!reqObj || typeof reqObj !== 'object' || Array.isArray(reqObj)) throw 0; } catch (_) { return json(400, { error: 'bad_json' }); }
 
     // Reserve BEFORE any provider invocation. Never refunded.
     const dry = env.DRYRUN === '1';
@@ -67,9 +70,12 @@ export default {
       return json(429, { error: 'quota_exhausted', quota: 'exhausted', mode: r.mode, used: r.used, cap: BUDGET_CAP });
     }
     try {
-      const reply = dry ? DRYRUN_REPLY : await callModel(env, body);
-      if (!reply) return json(502, { error: 'bad_model_output', mode: r.mode, used: r.used, cap: BUDGET_CAP });
-      return json(200, Object.assign({}, reply, { dryrun: dry, mode: r.mode, used: r.used, cap: BUDGET_CAP }));
+      // dry run feeds the fixed reply through the same extraction + validation as a real one
+      const raw = dry ? JSON.stringify(DRYRUN_REPLY) : await callModel(env, body);
+      const h = handleReply(raw, reqObj);
+      // rejection: reason code + shape facts only; the model's text is never returned or stored
+      if (!h.ok) return json(502, { error: 'bad_model_output', reason: h.reason, shape: h.shape, via: h.via, mode: r.mode, used: r.used, cap: BUDGET_CAP });
+      return json(200, Object.assign({}, h.turn, { via: h.via, dryrun: dry, mode: r.mode, used: r.used, cap: BUDGET_CAP }));
     } catch (e) {
       const to = e && e.message === 'timeout';
       return json(to ? 504 : 502, { error: to ? 'timeout' : 'provider_error', mode: r.mode, used: r.used, cap: BUDGET_CAP });
@@ -85,12 +91,8 @@ async function callModel(env, body) {
     max_tokens: MAX_TOKENS
   });
   const out = await Promise.race([run, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), TIMEOUT_MS))]);
-  const text = out && typeof out.response === 'string' ? out.response : '';
-  const a = text.indexOf('{'), b = text.lastIndexOf('}');
-  if (a < 0 || b <= a) return null;
-  let o; try { o = JSON.parse(text.slice(a, b + 1)); } catch (_) { return null; }
-  // pass through only the contract fields; the client validates their content
-  return { say: o.say ?? '', vote: o.vote ?? null, beliefs: o.beliefs ?? {}, plan: o.plan ?? '', act: o.act ?? null };
+  // normally { response: string }; anything else is handed on as-is and classified by handleReply
+  return out && typeof out === 'object' && 'response' in out ? out.response : out;
 }
 
 // Call budget: separate counters budget:dryrun and budget:real, cap BUDGET_CAP each. Reservation is one storage
