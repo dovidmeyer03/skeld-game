@@ -45,6 +45,7 @@ export function buildBrief(req, view) {
 // Evidence classes, from the exact line formats the game writes (index.html memClasses / recordHistory / socialNotes).
 // Protected lines are never dropped: direct evidence, this meeting's facts, contradictions.
 export function evidenceClass(x) {
+  if (/^Left out to fit:/.test(x)) return 'marker'; // the client's own omission note (packBody): never dropped
   if (/^You SAW .* kill|^You watched .* visual task|come out of a vent|^Your tracker showed|^Vitals showed|different place than what they claimed/i.test(x)) return 'hard';
   if (/^You were in |^You last saw /.test(x)) return 'now';
   if (/^You glimpsed /.test(x)) return 'glimpse';
@@ -59,7 +60,8 @@ export function evidenceClass(x) {
 //  2 public notes, oldest first                                     6 sightings ("You saw"), oldest first
 //  3 glimpses, oldest first                                         7 own vote records, then other notes, oldest first
 //  4 long chat lines (except the newest 3) shortened to 140 chars   8 chat down to the newest 1
-// Never dropped: identity, role notes, players, accusation warning, protected evidence, event, options.
+// Never dropped: identity, role notes, players, accusation warning, protected evidence, the client's omission note,
+// event, options.
 // Returns { ok, messages, omitted, size } or { ok:false, reason:'cannot_fit', size }.
 export function fitMessages(req, cap) {
   const system = buildSystem(req);

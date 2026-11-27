@@ -2,7 +2,7 @@
 
 No provider calls, deploys or credentials were used for anything in this report. Offline fixtures **cannot prove live behavior**: they prove what the worker sends to the model and what it accepts or rejects. The model's behavior needs a future live test.
 
-Run `node test/run.js` (Node 18+, no network). It has 191 checks:
+Run `node test/run.js` (Node 18+, no network). It has 191 checks. `node test/chain.js` (Playwright + git; network blocked) runs the game's real builders end to end (18 checks).
 
 | Suite | Checks |
 |---|---|
@@ -137,9 +137,47 @@ If even that core exceeds the cap, the worker returns `413 {reason: "cannot_fit"
 | Busy game payloads (captured from `aiBody`/`packBody` at ~3,830 bytes, round 4–5, 23 memories) | about 3,890 | 5 public notes |
 | Synthetic v2 at the protocol limits (12 targets, 30 × 280-char chat, 35 memories) | 3,904 | 20 chat lines, 16 public notes and 5 sightings, with 7 lines shortened. All protected evidence, all 12 players, and the newest and bot-addressed messages are intact |
 
-**Remaining silent loss, outside the worker:** the game client's own `packBody` already drops old chat and notes **silently** to fit its 4,000 bytes. Those lines never reach the worker, so the worker cannot mark them.
-- **Recommended client change (not made; `index.html` was not touched):** when `packBody` trims, add one memory line such as "N older chat messages and M older notes were left out."
-- It stays within the production worker's limits.
+**Client-side silent loss: fixed on branch `packbody-omit-marker` (Task A; not merged, main untouched).**
+- **Before:** `packBody` in `index.html` dropped old chat and notes silently to fit its 4,000 bytes.
+- **Now:** once it trims anything, it adds one memory line right after the role lines, for example `Left out to fit: 24 older chat messages, 4 older notes.` (the last-resort path can also add "N role notes shortened" and "N other players not listed").
+- **Counts:** exact.
+- **Size:** the line is inside the same 4,000-byte check, so requests stay under the production worker's 4,096-byte limit.
+- **Scope:** only `packBody` changed.
+- **Worker side:** the worker treats that line as protected (`evidenceClass` → `marker`) and never drops it.
+
+## End-to-end chain on the game's real builders (`node test/chain.js`)
+
+**Not a copy of the game code.** `index.html` cannot be imported into Node, since it's a canvas page. Instead the test loads the game file from branch `packbody-omit-marker` in headless Chromium (Playwright, all network blocked) and calls the game's **own** `memClasses` → `aiBody` → `packBody`. The resulting request then goes through the worker's real `fetch` handler (offline Durable Object stubs, dry run). Nothing can drift out of sync. It needs Playwright and `git show`, so it is separate from `test/run.js`.
+
+**Busy state, built in the game:**
+- **12 players.** The game itself seats at most 10; two more agents are added to exercise the protocol limit.
+- **40 chat lines.** One is an accusation against the bot, sent through the game's own `playerSay`, so it is recorded as a claim the way real play records it.
+- **40 memory lines:**
+  - 8 witnessed kills;
+  - 6 visual tasks and 4 vent sightings;
+  - 3 contradictions and 3 vote records;
+  - 6 public notes and 6 sightings;
+  - plus role and this-meeting lines.
+
+**Results (18/18):**
+
+| Step | Discussion | Voting |
+|---|---|---|
+| (1) `packBody` output | 3,957 bytes | 3,947 bytes |
+| (1) Marker (counts match what was built before packing) | `Left out to fit: 24 older chat messages, 4 older notes.` | same |
+| (2) Worker | 200 (no 400/413) | 200 |
+| (3) Fitted model input | 3,985 chars | 3,998 chars |
+| (4) Protected lines reaching the model verbatim (incl. the kill, the vent, the accusation warning and the client marker) | 23 | 23 |
+| (5) Worker-side omissions (each also marked in the brief) | 4 public notes, 3 sightings, 2 chat lines; 1 line shortened | 4 public notes, 1 sighting, 2 chat lines; 1 line shortened |
+| (6) Dry-run turn | validates | validates |
+
+The game page raised no errors.
+
+**Play-phase decision:** `aiDecideBody` exists only on branch `ai-driven-1`, which does **not** have the `packBody` change. It was run from that branch: the worker accepted it and a listed action was chosen.
+
+**Findings from the chain:**
+- **`aiBody` pre-cap:** `aiBody` keeps only the newest 30 chat lines **before** `packBody` runs (`.slice(-30)`), and that pre-cap is still silent. The marker counts only what `packBody` trims. Fixing it would mean touching `aiBody`, which was out of scope ("packBody only").
+- **Accusations:** an accusation that exists only as a raw chat line can be trimmed away by `packBody`; the marker counts it. The game's normal chat path records accusations as claims, and `aiBody` sends the top-accused name in `meeting.accused`. That survives packing, and the worker turns it into the "you are being accused" warning.
 
 ## Known gaps / needs a future live test
 
@@ -147,7 +185,8 @@ If even that core exceeds the cap, the worker returns `413 {reason: "cannot_fit"
   - the share of `200` turns vs `unavailable` (with reasons) vs `502`;
   - the `grounding.used` rate when evidence is present;
   - whether voting turns pick consistent targets.
-- **Input fitting:** the omission markers are visible to the model, but whether this model handles them well is untested.
+- **Input fitting:** the omission markers (worker and client) are visible to the model, but whether this model handles them well is untested.
+- **The live-proof gap:** everything above is offline. No real game payload has been sent to a live model yet. Whether real bots then give useful, grounded, consistent turns can only be shown by a live test, which is not approved and was not run.
 - **Unverified prompt effects:** whether this model follows the per-phase rules, whether `beliefs` stays within 6 entries, and whether saboteur cover stories stay plausible.
 - **Truncation:** at `max_tokens` 400 with the richer prompt, truncation is still possible and would show as `extract:unbalanced`.
 - **Not attempted:** JSON mode / `response_format` (untested; a failure would still spend a reservation).
