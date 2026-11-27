@@ -421,7 +421,8 @@ function applyCfg(){KILL_CD=CFG.killCD;BOTSPD=92*CFG.speed;PSPD=118*CFG.speed;}
 function killRange(){return CFG.killDist==='short'?36:CFG.killDist==='long'?70:50;}
 function roleCfg(r){return r==='engineer'?{cd:CFG.engVentCD,max:CFG.engVentMax}:r==='monitor'?{cd:CFG.monCD,battery:CFG.monBattery}:r==='guardian'?{cd:CFG.guaCD,dur:CFG.guaDur}:r==='tracker'?{cd:CFG.trkCD,delay:CFG.trkDelay,dur:CFG.trkDur}:{};}
 const TASK_POOLS={common:['swipe','wires'],long:['data','seq','scan'],short:['meteors','shields','align','wires','swipe']};
-function makeHumanTasks(fake,common){const used=new Set(common);const list=common.slice();for(const [pool,n] of [['long',CFG.long],['short',CFG.short]]){const opts=shuffle(TASK_POOLS[pool].filter(k=>!used.has(k)));for(const k of opts.slice(0,n)){used.add(k);list.push(k);}}return list.map(k=>({kind:k,step:0,done:false,fake}));}
+function makeHumanTasks(fake,common){const used=new Set(common);const list=common.slice();for(const [pool,n] of [['long',CFG.long],['short',CFG.short]]){const opts=shuffle(TASK_POOLS[pool].filter(k=>!used.has(k)));for(const k of opts.slice(0,n)){used.add(k);list.push(k);}}return list.map(k=>({kind:k,step:0,done:false,fake,uid:++TASK_UID}));}
+let TASK_UID=0;/* stable task ids, shared by host and client so a completion never depends on array position */
 
 function newGame(opt){
  opt=opt||{};applyCfg();const nP=clamp(Math.round(CFG.players||10),4,10);const nEff=opt.mp?Math.max(CFG.fillBots===false?0:nP,1+opt.mp.length):nP;const nImp=Math.max(1,Math.min(CFG.imps,Math.floor((nEff-1)/2)));
@@ -974,7 +975,7 @@ function doKill_P(){const p=G.player,v=G.killT;if(!p.imp||!p.alive||!v||G.pKillC
 function ventMove(to){const p=G.player;if(p.inVent==null)return;if(isClient()){act({a:'ventmove',to});return;}const v=VENTS[to];v.open=0.4;p.inVent=to;p.x=v.x;p.y=v.y;SFX.beep(180);}
 function doSab(type){if(G.sab||G.sabCD>0||!G.player.imp)return;if(isClient()){G.sabMenu=false;act({a:'sab',t:type});return;}G.sabMenu=false;startSab(type);}
 function doReport(){if(isClient()){if(G.repT&&!G.mg&&G.player.alive)act({a:'report',id:G.repT.id});return;}if(G.repT&&!G.mg&&G.player.alive&&G.player.inVent==null)callMeeting('body',G.player,G.repT);}
-function completePlayerTask(t){if(t.done)return;setTimeout(()=>{const mine=G.player.tasks.filter(q=>!q.fake);if(mine.length&&mine.every(q=>q.done))SND.play('allTasks');},50);if(isClient()){act({a:'task',i:G.player.tasks.indexOf(t)});if(t.kind==='data'&&t.step===0){t.step=1;G.toast={t:2,text:'Now upload it in Comms'};return;}t.done=true;return;}if(t.kind==='data'&&t.step===0){t.step=1;G.toast={t:2,text:'Now upload it in Comms'};return;}t.done=true;G.tasksDone++;checkWin();}
+function completePlayerTask(t){if(t.done)return;setTimeout(()=>{const mine=G.player.tasks.filter(q=>!q.fake);if(mine.length&&mine.every(q=>q.done))SND.play('allTasks');},50);if(isClient()){const cur=(t.uid!=null&&G.player.tasks.find(q=>q.uid===t.uid))||t;if(cur.done)return;if(cur.uid==null){G.toast={t:2.5,text:'Task not synced yet. Try again.'};return;}act({a:'task',u:cur.uid,s:cur.step});cur.pend={s:cur.step,at:G.rt,n:0};if(cur.kind==='data'&&cur.step===0){cur.step=1;G.toast={t:2,text:'Now upload it in Comms'};return;}cur.done=true;return;}if(t.kind==='data'&&t.step===0){t.step=1;G.toast={t:2,text:'Now upload it in Comms'};return;}t.done=true;G.tasksDone++;checkWin();}
 function releasePad(){if(G.sab&&G.sab.playerHold>=0){G.sab.playerHold=-1;if(isClient())act({a:'pad',on:0});}}
 
 // ================= MINIGAMES =================
@@ -1523,7 +1524,7 @@ function hostRecv(m){if(!NET.inGame){if(LG.me)loungeHostRecv(m);return;}if(!G.ag
  if(m.type==='event')hostAction(a,d);}
 function hostAction(a,d){const M=G.M,play=G.mode==='play';
  switch(d.a){
- case 'task':{if(!play)return;const t=a.tasks[d.i|0];if(!t||t.done||!t.kind)return;if(t.kind==='data'&&t.step===0)t.step=1;else{t.done=true;if(!t.fake){G.tasksDone++;checkWin();}}sendPriv(a);break;}
+ case 'task':{if(!play)return;const t=d.u!=null?a.tasks.find(q=>q.kind&&q.uid===d.u):((d.i|0)>=0?a.tasks.filter(q=>q.kind)[d.i|0]:null);if(!t||t.done||!t.kind||(d.s!=null&&d.s!==t.step)){sendPriv(a);return;}if(t.kind==='data'&&t.step===0)t.step=1;else{t.done=true;if(!t.fake){G.tasksDone++;checkWin();}}sendPriv(a);break;}
  case 'bell':if(play&&a.alive&&a.meetingsLeft>0&&!G.sab&&G.buttonCD<=0&&dist(a.x,a.y,BELL.x,BELL.y)<75){a.meetingsLeft--;callMeeting('button',a,null);sendPriv(a);}break;
  case 'report':{const bd=G.bodies.find(b=>b.id===(d.id|0)&&!b.reported);if(play&&a.alive&&a.inVent==null&&bd&&dist(a.x,a.y,bd.x,bd.y)<110)callMeeting('body',a,bd);break;}
  case 'kill':{const v=G.agents[d.id|0];if(play&&a.imp&&a.alive&&a.inVent==null&&a.kcd<=0&&v&&v!==a&&v.alive&&!v.imp&&v.inVent==null&&dist(a.x,a.y,v.x,v.y)<killRange()+15)doKill(a,v,witnessesOf(a,v));break;}
@@ -1546,7 +1547,7 @@ function hostAction(a,d){const M=G.M,play=G.mode==='play';
  case 'govote':if(M&&M.phase==='discuss'&&a.alive){M.ready=M.ready||{};M.ready[a.id]=1;}break;
  case 'typing':a.typing=!!d.on;a.typingT=0;break;}}
 function privFor(a){return{k:'priv',you:a.id,imp:a.imp?1:0,role:a.imp?null:(a.role||null),partners:a.imp?G.agents.filter(q=>q.imp&&q!==a).map(q=>q.id):[],
- tasks:(a.tasks||[]).filter(t=>t.kind).map(t=>[t.kind,t.step,t.done?1:0,t.fake?1:0]),kcd:Math.max(0,Math.round(a.kcd*10)/10),abCD:Math.max(0,Math.round(a.abCD*10)/10),inVent:a.inVent,ventT:Math.round((a.ventT||0)*10)/10,ptrack:a.ptrack,bellUsed:a.meetingsLeft<=0?1:0,
+ tasks:(a.tasks||[]).filter(t=>t.kind).map(t=>[t.kind,t.step,t.done?1:0,t.fake?1:0,t.uid]),kcd:Math.max(0,Math.round(a.kcd*10)/10),abCD:Math.max(0,Math.round(a.abCD*10)/10),inVent:a.inVent,ventT:Math.round((a.ventT||0)*10)/10,ptrack:a.ptrack,bellUsed:a.meetingsLeft<=0?1:0,
  sabCD:a.imp?Math.max(0,Math.round(G.sabCD)):0,shields:a.role==='guardian'?G.agents.filter(q=>q.shieldT>0&&q.shieldBy===a.id).map(q=>q.id):(a.imp&&CFG.guaVisImp?G.agents.filter(q=>q.shieldT>0).map(q=>q.id):[]),ptrackT:Math.round((a.ptrackT||0)*10)/10,meetingsLeft:a.meetingsLeft,
  deaths:a.role==='monitor'?G.deaths.map(x=>[x.victim,Math.round(x.t)]):[],engCount:G.engCount||0,roleList:G.roleList||[]};}
 function inCamView(o){return inHall(o.x,o.y)&&CAMS.some(f=>Math.abs(o.x-f.x)<CAM_W/2+10&&Math.abs(o.y-f.y)<CAM_H/2+20);}
@@ -1587,9 +1588,16 @@ function clientStart(d){if(d.cfg){CFG=clampCfg(d.cfg);}applyCfg();const ag=Array
  COSMAP={};for(const r of ag){if(/^#[0-9a-f]{6}$/i.test(r[2]))COSMAP[r[2]]={hat:HAT_IDS.includes(r[4])?r[4]:'none',pants:PANT_IDS.includes(r[5])?r[5]:'none',shirt:shirtOk(r[6])};}
  for(const r of ag){const [id,name,col,cid]=r;G.agents[id]={id,name:String(name).slice(0,14),col:/^#[0-9a-f]{6}$/i.test(col)?col:'#cccccc',x:BELL.x,y:BELL.y,tx:BELL.x,ty:BELL.y,face:1,walk:Math.random()*6,moving:false,alive:true,imp:false,isPlayer:cid===NET.myId,remote:cid||null,human:!!cid,inVent:null,vis:null,lunge:0,shieldT:0,role:null,tasks:[],trail:[],snaps:[],witness:[],visual:[],ventSaw:[],claimEng:false,ventT:0};}
  G.player=G.agents.find(a=>a&&a.isPlayer);NET.lastVis=null;NET.typing=false;}
+/* Same object is kept for the same uid, so a minigame opened on it stays valid across priv refreshes. A local completion
+ is shown at once (pend); if the host has not confirmed it after 1.5s it is resent (host is idempotent per uid+step),
+ and after 3 tries the host's truth wins so the list never shows work the crew total does not have. */
+function reconcileTask(o,r){const host={kind:r[0],step:r[1],done:!!r[2],fake:!!r[3],uid:r[4]};if(!o||o.kind!==host.kind){return host;}
+ o.fake=host.fake;o.uid=host.uid;const pd=o.pend;
+ if(pd){const hostHas=host.done||host.step>pd.s;if(hostHas)o.pend=null;else if(G.rt-pd.at<1.5){return o;}else if(pd.n<3){pd.n++;pd.at=G.rt;act({a:'task',u:o.uid,s:pd.s});return o;}else o.pend=null;}
+ o.step=host.step;o.done=host.done;return o;}
 function applyPriv(d){if(!G.agents||!G.player)return;const p=G.player;p.imp=!!d.imp;G.playerImp=p.imp;p.role=d.role||null;
  for(const a of G.agents)if(!a.isPlayer&&G.mode!=='end')a.imp=false;(d.partners||[]).forEach(id=>{if(G.agents[id])G.agents[id].imp=true;});
- const old=p.tasks||[];p.tasks=(d.tasks||[]).map((r,i)=>{const o=old[i];const t={kind:r[0],step:r[1],done:!!r[2],fake:!!r[3]};if(o&&o.kind===t.kind){if(o.done)t.done=true;if(o.step>t.step)t.step=o.step;}return t;});
+ const old=p.tasks||[];p.tasks=(d.tasks||[]).map(r=>reconcileTask(old.find(o=>o.uid!=null&&o.uid===r[4]),r));
  G.pKillCD=+d.kcd||0;G.pAbCD=+d.abCD||0;p.inVent=d.inVent==null?null:d.inVent;p.ventT=+d.ventT||0;G.ptrack=d.ptrack==null?null:d.ptrack;G.ptrackT=+d.ptrackT||0;p.meetingsLeft=d.meetingsLeft;G.buttonUsed=!!d.bellUsed;G.sabCD=+d.sabCD||0;
  for(const a of G.agents){a.shieldT=(d.shields||[]).includes(a.id)?30:0;a.shieldBy=p.role==='guardian'&&a.shieldT?p.id:null;}G.deaths=(d.deaths||[]).map(x=>({victim:x[0],t:x[1]}));G.engCount=d.engCount||0;G.roleList=d.roleList||[];}
 function applySnap(sn){if(!G.agents||!G.player)return;const prev=G.mode;const p=G.player;
