@@ -388,7 +388,7 @@ const CFG_ROWS=[
  {k:'meetings',l:'Emergency Meetings (each)',min:0,max:9,step:1},
  {k:'emergCD',l:'Emergency Cooldown',min:0,max:60,step:5,u:'s'},
  {k:'discTime',l:'Discussion Time',min:0,max:120,step:15,u:'s'},
- {k:'voteTime',l:'Voting Time',min:0,max:300,step:15,u:'s'},
+ {k:'voteTime',l:'Voting Time',min:15,max:300,step:15,u:'s'},/* 0 would end every vote before anyone could vote */
  {k:'anonVotes',l:'Anonymous Votes',bool:1},
  {k:'confirmEjects',l:'Confirm Ejects',bool:1},
  {h:'Tasks'},
