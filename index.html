@@ -563,7 +563,11 @@ function chatClaims(text,sp){const M=G.M,A=G.agents;if(!M)return;const low=Strin
  if(room&&RX_SELF.test(low)){M.alibi[sp.id]=[room.name];const ins=[];for(const b of shuffle(A.filter(q=>q.alive&&!q.human&&!q.imp&&q!==sp))){const q=sightingsOf(b,sp.id,M.w0,M.w1);const bad=q.find(z=>z.room!==room.name&&!z.room.startsWith('the hall'));if(bad&&!q.some(z=>z.room===room.name)){ins.push({who:b.id,text:`That's not true, ${sp.name}. I saw you in ${bad.room}.`});M.claims.push({type:'contra',sp:b.id,target:sp.id});break;}}{const ok=scriptIns(M,ins);if(ok.length&&!M.aiOn)M.lines.splice(M.shown,0,...ok);}}}
 function skeptics(spId,tId){const pool=shuffle(G.agents.filter(b=>b.alive&&!b.human&&!b.imp&&b.id!==spId&&b.id!==tId));const r=Math.random();const n=r<0.3?0:r<0.8?1:2;return pool.slice(0,n);}
 const ASKWHY=['Why {T}? What did you see, {S}?','{S}, do you have any evidence?','Based on what, {S}?','Hold on. Why {T}?'];
-function playerSay(raw,spk){if(isClient()&&!spk){const t=String(raw).replace(/\s+/g,' ').trim().slice(0,120);const hq=NET.players.find(q=>q.isHost);if(t)netSend(hq&&hq.clientId?{type:'chat',to:hq.clientId,data:{text:t}}:{type:'chat',data:{text:t}});SFX.click();return;}const M=G.M,A=G.agents,p=spk||G.player;if(!M||(M.phase!=='discuss'&&M.phase!=='vote'))return;if(!p.alive&&!NET.role)return;const text=String(raw).replace(/\s+/g,' ').trim().slice(0,120);if(!text)return;
+function playerSay(raw,spk){if(isClient()&&!spk){const t=String(raw).replace(/\s+/g,' ').trim().slice(0,120);const hq=NET.players.find(q=>q.isHost);if(t)netSend(hq&&hq.clientId?{type:'chat',to:hq.clientId,data:{text:t}}:{type:'chat',data:{text:t}});SFX.click();return;}const M=G.M,A=G.agents,p=spk||G.player;if(!M)return;if(!p.alive&&!NET.role)return;const text=String(raw).replace(/\s+/g,' ').trim().slice(0,120);if(!text)return;
+ /* intro: hold the line and replay it through this same function the moment discussion opens (ghost flag decided then, by the same rule) */
+ if(M.phase==='intro'){M.pendChat=M.pendChat||[];if(M.pendChat.length<40)M.pendChat.push({id:p.id,text});if(p===G.player)SFX.click();return;}
+ /* results/eject: voting is closed, so show the line without claims, AI replies or votes; dead speakers stay ghost-only */
+ if(M.phase!=='discuss'&&M.phase!=='vote'){M.lines.splice(M.shown,0,p.alive?{who:p.id,text}:{who:p.id,text,ghost:true});M.shown+=1;M.scroll=0;if(p===G.player)SFX.click();else if(!M.chatOpen&&(p.alive||!G.player.alive))SND.play('chat');return;}
  if(!p.alive){M.lines.splice(M.shown,0,{who:p.id,text,ghost:true});M.shown+=1;if(M.gbReplyT==null&&Math.random()<0.7)M.gbReplyT=rand(1.5,3.5);if(p===G.player){M.scroll=0;SFX.click();}else if(!G.player.alive&&!M.chatOpen)SND.play('chat');return;}// ghost line: flag fixed now; never reaches claims, epoch, AI queue or votes
  const low=text.toLowerCase(),N=id=>A[id].name;const ins=[{who:p.id,text}];
  const named=A.filter(a=>a!==p&&new RegExp('\\b'+a.name.toLowerCase()+'\\b').test(low));const live=named.filter(a=>a.alive);
@@ -868,8 +872,9 @@ function ghostBotsTick(M,dt){if(isClient()||(M.phase!=='discuss'&&M.phase!=='vot
  if(M.gbReplyT!=null){M.gbReplyT-=dt;if(M.gbReplyT<=0){M.gbReplyT=null;if((M.gbN||0)<10)ghostSay(M,pick(gs),pick(GB_REPLY));}}
  M.gbT=M.gbT==null?rand(3,6):M.gbT-dt;if(M.gbT>0||(M.gbN||0)>=6)return;M.gbT=rand(7,12);
  const fresh=gs.filter(b=>!(M.gbIntro&&M.gbIntro[b.id]));const b=fresh.length?fresh[0]:pick(gs);const t=ghostBotLine(M,b);if(t)ghostSay(M,b,t);}
+function flushPendChat(M){const q=M.pendChat;M.pendChat=null;if(!q)return;for(const e of q){const a=G.agents[e.id];if(a)playerSay(e.text,a);}}
 function updateMeeting(dt){const M=G.M;M.t+=dt;
- if(M.phase==='intro'){if(M.t>2.8){M.phase='discuss';M.t=0;M.dtimer=CFG.discTime;aiStartMeeting(M);if(M.dtimer<=0)startVote();}return;}
+ if(M.phase==='intro'){if(M.t>2.8){M.phase='discuss';M.t=0;M.dtimer=CFG.discTime;aiStartMeeting(M);flushPendChat(M);if(M.dtimer<=0)startVote();}return;}
  ghostBotsTick(M,dt);
  if(M.phase==='discuss'||M.phase==='vote'){M.lineT-=dt;if(M.lineT<=0&&M.shown<M.lines.length&&(M.aiResolved||M.t>12)){M.shown++;M.lineT=LINE_GAP;M.scroll=0;if(!M.chatOpen)SND.play('chat');}}
  if(M.phase==='discuss'){M.dtimer-=dt;if(M.dtimer<=0)startVote();return;}
@@ -1473,7 +1478,7 @@ function remoteUpdate(a,dt){if(!killPaused(a))a.kcd-=dt;a.abCD-=dt;if(a.ptrack!=
 function remoteExitVent(a){if(a.inVent==null)return;const v=VENTS[a.inVent];a.inVent=null;ventWitness(a,v);if(a.role==='engineer'&&!a.imp)a.abCD=CFG.engVentCD;sendPriv(a);}
 function hostRecv(m){if(!NET.inGame){if(LG.me)loungeHostRecv(m);return;}if(!G.agents)return;const a=G.agents.find(q=>q.remote===m.from);if(!a)return;const d=(m.data&&typeof m.data==='object')?m.data:{};
  if(m.type==='input'){if(G.mode==='play')a.in={vx:clamp(+d.vx||0,-1,1),vy:clamp(+d.vy||0,-1,1)};return;}
- if(m.type==='chat'){if(G.mode==='meeting'&&typeof d.text==='string'){a.typing=false;playerSay(d.text,a);}return;}
+ if(m.type==='chat'){if(G.mode==='meeting'&&typeof d.text==='string'){a.typing=false;playerSay(d.text,a);}else if(typeof d.text==='string'&&a.alive)sendTo(a.remote,{k:'toast',text:'The meeting ended before your message arrived.'});return;}
  if(m.type==='event')hostAction(a,d);}
 function hostAction(a,d){const M=G.M,play=G.mode==='play';
  switch(d.a){
