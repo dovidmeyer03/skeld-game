@@ -369,6 +369,9 @@ let KILL_CD=15,BOTSPD=92,PSPD=118;const VIS_R=150,VIS=VIS_R,BVIS=VIS_R,FADE_IN=0
 // ================= GAME SETTINGS (one shared config; host-authoritative in multiplayer) =================
 // Ranges and steps are our design ranges; defaults are ours, not official values.
 const CFG_ROWS=[
+ {h:'Players'},
+ {k:'players',l:'# Players (total, solo & multiplayer)',min:4,max:10,step:1},
+ {k:'fillBots',l:'Multiplayer: Fill Empty Seats with Bots',bool:1},
  {h:'Saboteurs'},
  {k:'imps',l:'# Saboteurs',min:1,max:3,step:1},
  {k:'killCD',l:'Kill Cooldown',min:10,max:60,step:2.5,u:'s'},
@@ -404,7 +407,7 @@ const CFG_ROWS=[
  {k:'trkCD',l:'Tracking Cooldown',min:10,max:120,step:5,u:'s'},{k:'trkDelay',l:'Tracking Delay',min:0,max:3,step:0.5,u:'s'},{k:'trkDur',l:'Tracking Duration',min:10,max:120,step:5,u:'s'},
  {h:'Audio (this device only)'},
  {k:'_sfx',l:'Sound Effects',bool:1,local:1},{k:'_music',l:'Music',bool:1,local:1},{k:'_musicVol',l:'Music Volume',min:0,max:100,step:10,u:'%',local:1}];
-const CFG_DEF={imps:2,killCD:15,impVision:1.25,killDist:'medium',crewVision:1,speed:1,meetings:1,emergCD:15,discTime:45,voteTime:60,anonVotes:false,confirmEjects:true,taskBar:'always',common:1,long:2,short:3,visualTasks:true,
+const CFG_DEF={players:10,fillBots:true,imps:2,killCD:15,impVision:1.25,killDist:'medium',crewVision:1,speed:1,meetings:1,emergCD:15,discTime:45,voteTime:60,anonVotes:false,confirmEjects:true,taskBar:'always',common:1,long:2,short:3,visualTasks:true,
  engMax:1,engChance:50,engVentCD:15,engVentMax:10,monMax:1,monChance:50,monCD:25,monBattery:10,guaMax:1,guaChance:50,guaCD:45,guaDur:30,guaVisImp:false,trkMax:1,trkChance:50,trkCD:25,trkDelay:1,trkDur:30};
 function clampCfg(c){const o=Object.assign({},CFG_DEF);for(const r of CFG_ROWS){if(!r.k||r.local)continue;let v=c&&c[r.k];if(r.bool)o[r.k]=v==null?CFG_DEF[r.k]:!!v;else if(r.opts)o[r.k]=r.opts.includes(v)?v:CFG_DEF[r.k];else{v=+v;if(!isFinite(v))v=CFG_DEF[r.k];v=clamp(Math.round(v/r.step)*r.step,r.min,r.max);if(r.skip&&v>0&&v<r.skip[1]+1)v=r.skip[1]+1;o[r.k]=+v.toFixed(2);}}
  o.imps=clamp(o.imps,1,Math.min(3,4));// impostors must stay below crew (10 players)
@@ -419,7 +422,7 @@ const TASK_POOLS={common:['swipe','wires'],long:['data','seq','scan'],short:['me
 function makeHumanTasks(fake,common){const used=new Set(common);const list=common.slice();for(const [pool,n] of [['long',CFG.long],['short',CFG.short]]){const opts=shuffle(TASK_POOLS[pool].filter(k=>!used.has(k)));for(const k of opts.slice(0,n)){used.add(k);list.push(k);}}return list.map(k=>({kind:k,step:0,done:false,fake}));}
 
 function newGame(opt){
- opt=opt||{};applyCfg();const nImp=CFG.imps;
+ opt=opt||{};applyCfg();const nP=clamp(Math.round(CFG.players||10),4,10);const nEff=opt.mp?Math.max(CFG.fillBots===false?0:nP,1+opt.mp.length):nP;const nImp=Math.max(1,Math.min(CFG.imps,Math.floor((nEff-1)/2)));
  // colours: humans keep their lobby colour/cosmetics; bots take the remaining colours (classic 10 first)
  const slotCos=[];slotCos[0]=opt.myCos||null;(opt.mp||[]).forEach((h,i)=>{slotCos[i+1]=h.cos||null;});
  if(opt.botCos){let k=0;for(let i=1;i<10&&k<opt.botCos.length;i++){if(i<=(opt.mp?opt.mp.length:0))continue;slotCos[i]=opt.botCos[k++];}}
@@ -429,7 +432,7 @@ function newGame(opt){
  COSMAP={};for(let i=0;i<10;i++){const sc=slotCos[i];COSMAP[PAL[cols[i]][1]]={hat:sc&&HAT_IDS.includes(sc.hat)?sc.hat:'none',pants:sc&&PANT_IDS.includes(sc.pants)?sc.pants:'none',shirt:sc?shirtOk(sc.shirt):(Math.random()<0.45?pick(SHIRT_IDS.slice(1)):'none')};}
  G={mode:'reveal',rt:G.rt||0,revealT:0,t:0,round:0,agents:[],bodies:[],deaths:[],killCD:KILL_CD,sabCD:85,sab:null,M:null,buttonUsed:false,buttonCD:CFG.emergCD,mg:null,fx:[],cam:{x:BELL.x,y:BELL.y},flash:0,deathFx:null,lastMeetT:0,tasksDone:0,tasksShown:0,tasksTotal:0,mapOpen:false,tasksOpen:taskPanelPref(),alarmT:0,toast:null,end:null,pKillCD:KILL_CD,pAbCD:10,ptrack:null,ptrackT:0,sabMenu:false,shots:[],abT:null,voteT:{},social:{meetings:[],ejected:[]},aiStatus:'off',
   playerImp:opt.imp!=null?opt.imp:Math.random()<Math.min(0.9,nImp/6)};
- for(let i=0;i<10;i++){const [name,col]=PAL[cols[i]];const a={id:i,name,col,x:0,y:0,face:1,walk:Math.random()*6,moving:false,alive:true,imp:false,isPlayer:i===0,human:i===0,kcd:KILL_CD,padHold:-1,in:null,ptrack:null,ptrackT:0,typing:false,path:[],tasks:[],cur:null,wait:0,trail:[],snaps:[],witness:[],lunge:0,lx:0,ly:0,sabJob:null,sabWork:0,reportBody:null,selfRep:null,state:'normal',target:null,scanT:Math.random(),repathT:0,huntT:0,sightT:Math.random()*0.35,trailT:0,vis:null,visT:0,visual:[],ventSaw:[],inVent:null,role:null,abCD:10,shieldT:0,trackId:null,trackT:0,trackLog:[],vitalsKnown:[],vitalsAlert:null,bellUsed:false,meetingsLeft:CFG.meetings,engPlan:null,ventHold:0,ventT:0,claimEng:false,posHist:[],aiVote:null,wantBell:null};G.agents.push(a);}
+ for(let i=0;i<nEff;i++){const [name,col]=PAL[cols[i]];const a={id:i,name,col,x:0,y:0,face:1,walk:Math.random()*6,moving:false,alive:true,imp:false,isPlayer:i===0,human:i===0,kcd:KILL_CD,padHold:-1,in:null,ptrack:null,ptrackT:0,typing:false,path:[],tasks:[],cur:null,wait:0,trail:[],snaps:[],witness:[],lunge:0,lx:0,ly:0,sabJob:null,sabWork:0,reportBody:null,selfRep:null,state:'normal',target:null,scanT:Math.random(),repathT:0,huntT:0,sightT:Math.random()*0.35,trailT:0,vis:null,visT:0,visual:[],ventSaw:[],inVent:null,role:null,abCD:10,shieldT:0,trackId:null,trackT:0,trackLog:[],vitalsKnown:[],vitalsAlert:null,bellUsed:false,meetingsLeft:CFG.meetings,engPlan:null,ventHold:0,ventT:0,claimEng:false,posHist:[],aiVote:null,wantBell:null};G.agents.push(a);}
  G.player=G.agents[0];
  if(opt.mp){const used=new Set();const uname=n=>{let b=cleanName(n),x=b,k=2;while(used.has(x.toLowerCase())||PAL.some(q=>q[0].toLowerCase()===x.toLowerCase()&&q[0]!==b))x=b+k++;used.add(x.toLowerCase());return x;};
   G.player.name=uname(opt.name||'Host');opt.mp.forEach((h,i)=>{const a=G.agents[i+1];if(!a)return;a.remote=h.clientId;a.human=true;a.name=uname(h.name);});
@@ -500,6 +503,7 @@ addEventListener('keydown',e=>{if(typingNow())return;// never while a text field
  if(G.mode==='settings'&&['pagedown','pageup','arrowdown','arrowup'].includes(k)){e.preventDefault();SET_SCROLL=Math.max(0,SET_SCROLL+(k==='pagedown'?200:k==='pageup'?-200:k==='arrowdown'?40:-40));}
  if(G.mode==='meeting'&&G.M&&G.M.chatOpen&&(k==='pageup'||k==='pagedown')){e.preventDefault();const M=G.M;M.scroll=clamp((M.scroll||0)+(k==='pageup'?150:-150),0,M.maxScroll||0);}
  if(G.mode==='meeting'&&G.M&&!G.menuOpen&&k===KB.chat){e.preventDefault();G.M.chatOpen=true;setTimeout(()=>{if(CHATBOX.style.display!=='none'&&!CHATBOX.hidden)CI.focus();},80);}
+ if(G.mode==='play'&&G.player&&!G.player.alive&&!G.menuOpen&&k===KB.chat){e.preventDefault();G.gcOpen=true;G.gcSeen=(G.gch||[]).length;setTimeout(()=>{if(CHATBOX.style.display!=='none'&&!CHATBOX.hidden)CI.focus();},80);}
  if(G.mode==='play'&&!G.mg&&!G.menuOpen){const p=G.player;
   if(k===KB.use||k===KB_ALT.use)doUse();if(k===KB.report)doReport();if(k===KB.map)G.mapOpen=!G.mapOpen;if(k===KB.ability)doAbility();if(k===KB.kill)doKill_P();if(k===KB.zoom&&overviewOk()){G.overview=!G.overview;resetJoy();}
   if(k===KB.sabotage&&p&&p.imp&&!G.sab&&G.sabCD<=0){G.sabMenu=!G.sabMenu;SFX.click();}}
@@ -513,7 +517,7 @@ addEventListener('focusin',()=>{if(typingNow())for(const k in KEYS)KEYS[k]=false
 addEventListener('wheel',e=>{const dy=e.deltaY*(e.deltaMode===1?16:e.deltaMode===2?H:1);
  if(KG.open){KG.scroll=clamp(KG.scroll+dy,0,KG.max||0);e.preventDefault();return;}
  if(G.mode==='settings'){SET_SCROLL=Math.max(0,SET_SCROLL+dy);e.preventDefault();return;}
- if(G.mode==='meeting'&&G.M&&G.M.chatOpen){const M=G.M;M.scroll=clamp((M.scroll||0)-dy,0,M.maxScroll||0);e.preventDefault();}},{passive:false});
+ if(G.mode==='meeting'&&G.M&&G.M.chatOpen){const M=G.M;M.scroll=clamp((M.scroll||0)-dy,0,M.maxScroll||0);e.preventDefault();}else if(G.mode==='play'&&G.gcOpen){G.gcScr=Math.max(0,(G.gcScr||0)-dy);e.preventDefault();}},{passive:false});
 addEventListener('keyup',e=>{KEYS[e.key.toLowerCase()]=false;});
 function onDown(x,y,id){
  const h=hitTest(x,y);
@@ -548,11 +552,11 @@ for(const id of ['chatbox','mpbox']){document.querySelectorAll('#'+id).forEach(n
 const CHATBOX=document.createElement('div');CHATBOX.id='chatbox';CHATBOX.hidden=true;CHATBOX.style.cssText='position:fixed;display:none;z-index:5;gap:6px;align-items:center;box-sizing:border-box';
 CHATBOX.innerHTML='<input id="ci" maxlength="120" enterkeyhint="send" placeholder="Type a message…" autocomplete="off" autocorrect="off" style="flex:1;min-width:0;height:38px;box-sizing:border-box;border-radius:10px;border:2px solid #7f90c8;background:#f4f6fb;color:#111;font:600 15px system-ui,sans-serif;padding:0 10px"><button id="cs" style="height:38px;padding:0 16px;border-radius:10px;border:0;background:#3a6fd8;color:#fff;font:800 14px system-ui,sans-serif">SEND</button>';
 document.body.appendChild(CHATBOX);const CI=document.getElementById('ci'),CSB=document.getElementById('cs');
-function sendChat(){const v=CI.value;CI.value='';CI.blur();if(v.trim())playerSay(v);}
+function sendChat(){const v=CI.value;CI.value='';CI.blur();if(!v.trim())return;if(G.mode==='play'){playerSayGhost(v);return;}playerSay(v);}
 CSB.addEventListener('click',e=>{e.preventDefault();sendChat();});CI.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();sendChat();}});
 let CHAT_POS=null;
 function composing(){return !!(G.player&&G.player.alive&&CHATBOX.style.display!=='none'&&(document.activeElement===CI||CI.value.trim().length>0));}
-function placeChat(){if(G.mode!=='meeting'||!G.M)CHAT_POS=null;if(CHAT_POS){const q=CHAT_POS;CHATBOX.hidden=false;CHATBOX.style.display='flex';CHATBOX.style.left=q.x+'px';CHATBOX.style.top=q.y+'px';CHATBOX.style.width=q.w+'px';}else{CHATBOX.hidden=true;if(CHATBOX.style.display!=='none'){CHATBOX.style.display='none';if(document.activeElement===CI)CI.blur();}}}
+function placeChat(){if((G.mode!=='meeting'||!G.M)&&!(G.mode==='play'&&G.gcOpen))CHAT_POS=null;if(CHAT_POS){const q=CHAT_POS;CHATBOX.hidden=false;CHATBOX.style.display='flex';CHATBOX.style.left=q.x+'px';CHATBOX.style.top=q.y+'px';CHATBOX.style.width=q.w+'px';}else{CHATBOX.hidden=true;if(CHATBOX.style.display!=='none'){CHATBOX.style.display='none';if(document.activeElement===CI)CI.blur();}}}
 const RX_ACC=/\b(sus|suss|sussy|suspicious|kill|killed|killer|imp|imps|impostor|impostors|imposter|imposters|saboteur|saboteurs|sab|vent|vented|venting|lying|liar|lie|did it|vote)\b/,RX_VOUCH=/\b(clear|safe|innocent|trust|with me|vouch|confirmed|not (him|her|them|it))\b/,RX_ASK=/\b(where|why|alibi)\b|\?/,RX_SELF=/\b(i was|i'm in|i am in|was in|i went)\b/;
 // Claims from a bot's own (AI-written) chat line: same keyword rules, no automatic replies.
 function chatClaims(text,sp){const M=G.M,A=G.agents;if(!M)return;const low=String(text).toLowerCase();const named=A.filter(a=>a!==sp&&a.alive&&new RegExp('\\b'+a.name.toLowerCase()+'\\b').test(low));
@@ -746,7 +750,7 @@ function callMeeting(kind,caller,body){
  resetJoy();G.mapOpen=false;G.overview=false;
  if(body){body.reported=true;}
  for(const bd of G.bodies)bd.reported=true;
- G.mode='meeting';G.sab=null;
+ G.mode='meeting';G.sab=null;G.gcOpen=false;
  G.round=(G.round||0)+1;(G.social.starts=G.social.starts||[]).push(G.t);if(CFG.taskBar==='meetings')G.tasksShown=G.tasksDone;
  const M={voteT:{},kind,caller,body,phase:'intro',t:0,lines:[],shown:0,lineT:1.0,votes:{},voteAt:{},sel:null,timer:0,dtimer:CFG.discTime,scroll:0,chips:0,picker:null,chatOpen:false,seen:0,res:null,round:G.round};
  G.M=M;SND.play(kind==='body'?'report':'button');SND.play('meetingAlarm');MUSIC.duck(true);
@@ -852,6 +856,29 @@ function voteLanded(id){const M=G.M;M.voteT[id]=M.t;SND.play('vote');const left=
 function castVote(t){const M=G.M,p=G.player;if(!M||M.phase!=='vote'||!p.alive||M.votes[p.id]!==undefined)return;if(isClient()){act({a:'vote',t});M.votes[p.id]=t;M.sel=null;SND.play('vote');return;}M.votes[p.id]=t;M.sel=null;voteLanded(p.id);}
 function remoteComposing(){return false;}
 function meetingCanEnd(M){return G.agents.filter(a=>a.alive).every(a=>M.votes[a.id]!==undefined);}
+// ===== ghost chat during gameplay rounds: dead players (human + bots) talk among ghosts; the living never receive it =====
+const GB_R_WATCH=['Watching {A} do their tasks.','Following {A} for a bit.','{A} keeps wandering around.','Keeping an eye on {A}.','{A} has been busy down there.'];
+const GB_R_KNOW=['It was {K}. Watch {K} closely.','{K} got me in {R}. Nobody out there knows yet.','For the record: {K}, in {R}.'];
+const GB_R_QUIET=['Quiet up here. Anyone else watching?','Being a ghost is boring.','At least we can float through walls now.','I hope they finish their tasks soon.','Nice view from up here, at least.'];
+function gchPush(who,text,own){text=String(text||'').replace(/\s+/g,' ').trim().slice(0,120);if(!text)return;G.gch=G.gch||[];G.gch.push({who,text});if(G.gch.length>60)G.gch.splice(0,G.gch.length-60);if(own)SFX.click();else if(G.player&&!G.player.alive&&!G.gcOpen)SND.play('chat');}
+function gchLineFor(b){const kn=ghostKnows(b),living=G.agents.filter(a=>a.alive);G.gchSaid=G.gchSaid||{};const said=G.gchSaid[b.id]=G.gchSaid[b.id]||{};const recent=G.gchRecent||[];
+ for(let k=0;k<5;k++){let t,usedKnow=false;
+  if(kn&&!said.know&&k<2){t=fmt(pick(GB_R_KNOW),kn);usedKnow=true;}
+  else if(living.length&&Math.random()<0.6)t=fmt(pick(GB_R_WATCH),{A:pick(living).name});
+  else t=pick(GB_R_QUIET);
+  if(!recent.includes(t)){if(usedKnow)said.know=1;return t;}}
+ return null;}
+function ghostRoundTick(dt){if(isClient()||G.mode!=='play')return;
+ if(!G.agents.some(a=>a.human&&!a.alive))return;// only when a human ghost is there to read it
+ const gs=G.agents.filter(a=>!a.alive&&!a.human);if(!gs.length)return;
+ G.gchT=G.gchT==null?rand(6,10):G.gchT-dt;if(G.gchT>0||(G.gchRN||0)>=10)return;G.gchT=rand(9,16);
+ const pool=gs.filter(b=>b.id!==G.gchLast);const b=pick(pool.length?pool:gs);
+ const t=gchLineFor(b);if(t==null)return;// stay quiet rather than repeat a line
+ G.gchRN=(G.gchRN||0)+1;G.gchLast=b.id;G.gchRecent=(G.gchRecent||[]).concat(t).slice(-10);
+ gchPush(b.id,t);}
+function playerSayGhost(raw){const p=G.player;if(!p||p.alive)return;const text=String(raw).replace(/\s+/g,' ').trim().slice(0,120);if(!text)return;
+ if(isClient()){const hq=NET.players.find(q=>q.isHost);netSend(hq&&hq.clientId?{type:'chat',to:hq.clientId,data:{text}}:{type:'chat',data:{text}});SFX.click();return;}
+ gchPush(p.id,text,true);}
 // ===== ghost bots: dead bots chat among ghosts (scripted, local) on the ghost:true path; the living never receive it =====
 const GB_KILLED=['It was {K}. They got me in {R}.','{K} did it. I saw it happen in {R}.','I never saw it coming. {K}, in {R}.'];
 const GB_EJ_CREW=['For the record, I was crew.','I was innocent. Somebody out there is lying.'];
@@ -1134,7 +1161,7 @@ function updateCore(dt){G.rt+=dt;
  if(G.deathFx){G.deathFx.t-=dt;if(G.deathFx.t<=0)G.deathFx=null;}
  const p=G.player;movePlayer(dt);
  for(const a of G.agents){memoryTick(a,dt);if(a.remote)remoteUpdate(a,dt);else if(!a.isPlayer)botUpdate(a,dt);if(G.mode!=='play')return;}
- updateSab(dt);if(G.mode!=='play')return;
+ updateSab(dt);if(G.mode!=='play')return;ghostRoundTick(dt);
  updateMG(dt);computeTargets();checkWin();
  const k=Math.min(1,dt*8);G.cam.x+=(p.x-G.cam.x)*k;G.cam.y+=(p.y-G.cam.y)*k;
 }
@@ -1266,6 +1293,18 @@ function drawHUD(){const c=ctx,p=G.player;
  // map button
  const mx=W-SA.r-34,my=SA.t+30;rr(c,mx-22,my-20,44,40,8);c.fillStyle='rgba(30,36,52,.9)';c.fill();c.strokeStyle='#fff';c.lineWidth=2;c.stroke();c.strokeStyle='#cfe';c.lineWidth=2;c.beginPath();c.moveTo(mx-12,my-8);c.lineTo(mx-4,my-12);c.lineTo(mx+4,my-8);c.lineTo(mx+12,my-12);c.lineTo(mx+12,my+8);c.lineTo(mx+4,my+12);c.lineTo(mx-4,my+8);c.lineTo(mx-12,my+12);c.closePath();c.stroke();addHit(mx-24,my-22,48,44,()=>{G.mapOpen=true;});
  if(overviewOk()){const zx=mx,zy=my+50,on=!!G.overview;rr(c,zx-22,zy-20,44,40,8);c.fillStyle=on?'#3a6fd8':'rgba(30,36,52,.9)';c.fill();c.strokeStyle='#fff';c.lineWidth=2;c.stroke();c.strokeStyle='#cfe';c.lineWidth=2.2;c.beginPath();for(const [sx,sy] of [[-1,-1],[1,-1],[1,1],[-1,1]]){c.moveTo(zx+sx*12,zy+sy*5);c.lineTo(zx+sx*12,zy+sy*11);c.lineTo(zx+sx*5,zy+sy*11);}c.stroke();c.strokeRect(zx-5,zy-4,10,8);addHit(zx-24,zy-22,48,44,()=>{G.overview=!G.overview;resetJoy();SND.play('ui');});}
+ // ghost chat (dead players only): a channel where ghosts talk to each other during the round
+ if(!p.alive){const gx=W-SA.r-190,gy=SA.t+30;rr(c,gx-22,gy-20,44,40,8);c.fillStyle=G.gcOpen?'#3a6fd8':'rgba(30,36,52,.9)';c.fill();c.strokeStyle='#fff';c.lineWidth=2;c.stroke();
+  c.fillStyle='#cfd8ea';c.beginPath();c.arc(gx,gy-3,10,Math.PI,0);c.fill();c.fillRect(gx-10,gy-3,20,9);c.beginPath();c.moveTo(gx-10,gy+6);for(let gi=0;gi<=4;gi++)c.lineTo(gx-10+gi*5,gy+6+(gi%2?4:0));c.closePath();c.fill();c.fillStyle='#3a4358';c.beginPath();c.arc(gx-4,gy-6,1.8,0,TAU);c.arc(gx+4,gy-6,1.8,0,TAU);c.fill();
+  const unread=(G.gch||[]).length-(G.gcSeen||0);if(unread>0&&!G.gcOpen){c.fillStyle='#ff5a5a';c.beginPath();c.arc(gx+17,gy-15,9,0,TAU);c.fill();txt(c,String(Math.min(9,unread)),gx+17,gy-15,10,'#fff','center',true);}
+  addHit(gx-24,gy-22,48,44,()=>{G.gcOpen=!G.gcOpen;if(G.gcOpen)G.gcSeen=(G.gch||[]).length;SND.play('ui');});
+  if(G.gcOpen){G.gcSeen=(G.gch||[]).length;
+   const pw=Math.min(430,W-SA.l-SA.r-24),ph=Math.min(320,H-SA.b-150),px=W-SA.r-pw-10,py=SA.t+58;
+   rr(c,px-3,py-3,pw+6,ph+6,12);c.fillStyle='rgba(0,0,0,.35)';c.fill();
+   const GC={lines:G.gch||[],shown:(G.gch||[]).length,scroll:G.gcScr||0,maxScroll:0};
+   drawChat(GC,px,py,pw,ph-46);G.gcScr=GC.scroll;
+   txt(c,'GHOST CHAT - only ghosts can read this',px+pw/2,py+ph-34,10,'#b9c2d8','center',true);
+   CHAT_POS={x:px,y:py+ph-26,w:pw};}}
  // arrows
  if(!G.mg&&p.inVent==null){const ob=objective();if(ob)edgeArrow(ob.x,ob.y,ob.col,true);if(G.sab&&p.alive&&!p.imp)for(const fp of G.sab.pts)if(!fp.fixed)edgeArrow(fp.x,fp.y,'#ff3030');}
  // whole-map view: a clean overview (no on-map action buttons or joystick); the zoom button in the top bar closes it
@@ -1464,10 +1503,10 @@ function netTick(dt){netWatchdog(dt);if(!NET.ws)return;NET.pingT+=dt;if(NET.ping
  if(NET.role==='host'&&NET.inGame&&G.agents){NET.snapT+=dt;if(NET.snapT>=0.1){NET.snapT=0;const base=buildSnap();for(const h of G.agents)if(h.remote)netSend({type:'snapshot',to:h.remote,data:filterSnap(base,h)});}
   NET.privT+=dt;if(NET.privT>=0.5){NET.privT=0;for(const a of G.agents)if(a.remote)sendPriv(a);}}}
 // ---------- host side ----------
-function hostStart(opts){const humans=NET.players.filter(q=>!q.isHost&&q.clientId!==NET.myId).slice(0,9).map(q=>{const o=LG.others&&LG.others[q.clientId];return Object.assign({},q,{cos:o?{colIdx:o.colIdx,hat:o.hat,pants:o.pants,shirt:o.shirt}:null});});newGame(Object.assign({mp:humans,name:NET.name,myCos:LG.me?{colIdx:LG.me.colIdx,hat:LG.me.hat,pants:LG.me.pants,shirt:LG.me.shirt}:null},opts||{}));LG.active=false;NET.inGame=true;
+function hostStart(opts){const seatCap=Math.max(0,clamp(Math.round(CFG.players||10),4,10)-1);const humans=NET.players.filter(q=>!q.isHost&&q.clientId!==NET.myId).slice(0,seatCap).map(q=>{const o=LG.others&&LG.others[q.clientId];return Object.assign({},q,{cos:o?{colIdx:o.colIdx,hat:o.hat,pants:o.pants,shirt:o.shirt}:null});});newGame(Object.assign({mp:humans,name:NET.name,myCos:LG.me?{colIdx:LG.me.colIdx,hat:LG.me.hat,pants:LG.me.pants,shirt:LG.me.shirt}:null},opts||{}));LG.active=false;NET.inGame=true;
  netSend({type:'event',data:{k:'start',cfg:CFG,agents:G.agents.map(a=>[a.id,a.name,a.col,a.remote||(a.isPlayer?NET.myId:null),(COSMAP[a.col]||{}).hat||'none',(COSMAP[a.col]||{}).pants||'none',(COSMAP[a.col]||{}).shirt||'none'])}});
  for(const a of G.agents)if(a.remote)sendPriv(a);
- NET.players.filter(q=>!q.isHost&&q.clientId!==NET.myId).slice(9).forEach(q=>sendTo(q.clientId,{k:'full'}));}
+ NET.players.filter(q=>!q.isHost&&q.clientId!==NET.myId).slice(seatCap).forEach(q=>sendTo(q.clientId,{k:'full'}));}
 function hostToLobby(){NET.inGame=false;netSend({type:'event',data:{k:'lobby'}});G={mode:'lobby',rt:G.rt||0};loungeReturn();}
 function seatLeft(cid){const a=G.agents&&G.agents.find(q=>q.remote===cid);if(!a)return;a.remote=null;a.human=false;a.in=null;a.padHold=-1;a.typing=false;a.path=[];a.cur=null;a.wait=0;a.goalTag='';a.inVent=null;
  a.tasks=a.tasks.map(t=>{if(t.done)return{x:0,y:0,dur:0,done:true};const st=STN[TASKDEF[t.kind].st[t.step]]||STN.wires;const q=snap(st.x,st.y+22);return{x:q.x,y:q.y,dur:rand(11,17),done:false};});G.toast={t:3,text:a.name+' left; a bot took over their seat.'};}
@@ -1478,7 +1517,7 @@ function remoteUpdate(a,dt){if(!killPaused(a))a.kcd-=dt;a.abCD-=dt;if(a.ptrack!=
 function remoteExitVent(a){if(a.inVent==null)return;const v=VENTS[a.inVent];a.inVent=null;ventWitness(a,v);if(a.role==='engineer'&&!a.imp)a.abCD=CFG.engVentCD;sendPriv(a);}
 function hostRecv(m){if(!NET.inGame){if(LG.me)loungeHostRecv(m);return;}if(!G.agents)return;const a=G.agents.find(q=>q.remote===m.from);if(!a)return;const d=(m.data&&typeof m.data==='object')?m.data:{};
  if(m.type==='input'){if(G.mode==='play')a.in={vx:clamp(+d.vx||0,-1,1),vy:clamp(+d.vy||0,-1,1)};return;}
- if(m.type==='chat'){if(G.mode==='meeting'&&typeof d.text==='string'){a.typing=false;playerSay(d.text,a);}else if(typeof d.text==='string'&&a.alive)sendTo(a.remote,{k:'toast',text:'The meeting ended before your message arrived.'});return;}
+ if(m.type==='chat'){if(typeof d.text==='string'){if(G.mode==='meeting'&&a){a.typing=false;playerSay(d.text,a);}else if(G.mode==='play'&&a&&!a.alive)gchPush(a.id,d.text);else if(a&&a.alive)sendTo(a.remote,{k:'toast',text:'The meeting ended before your message arrived.'});}return;}
  if(m.type==='event')hostAction(a,d);}
 function hostAction(a,d){const M=G.M,play=G.mode==='play';
  switch(d.a){
@@ -1511,7 +1550,7 @@ function privFor(a){return{k:'priv',you:a.id,imp:a.imp?1:0,role:a.imp?null:(a.ro
 function inCamView(o){return inHall(o.x,o.y)&&CAMS.some(f=>Math.abs(o.x-f.x)<CAM_W/2+10&&Math.abs(o.y-f.y)<CAM_H/2+20);}
 function viewerSees(h,o){if(o===h)return true;if(G.mode!=='play')return true;if(h.onCams&&o.inVent==null&&inCamView(o))return true;if(h.ptrack===o.id)return true;if(h.imp&&o.imp&&o.inVent==null)return canSee(h,o,visR(h)+60);return canSee(h,o,visR(h)+30);}
 let SNAP_LN_ALL=null;
-function filterSnap(base,h){const sn=Object.assign({},base);if(sn.M&&SNAP_LN_ALL&&!h.alive)sn.M=Object.assign({},base.M,{ln:SNAP_LN_ALL});sn.a=base.a.map((r,i)=>{const o=G.agents[i];return viewerSees(h,o)?r:0;});sn.b=base.b.filter(b=>G.mode!=='play'||viewerSees(h,{x:b[1],y:b[2],inVent:null}));return sn;}
+function filterSnap(base,h){const sn=Object.assign({},base);if(!h.alive&&(G.gch||[]).length)sn.gc=G.gch.slice(-40).map(l=>[l.who,String(l.text).slice(0,160)]);if(sn.M&&SNAP_LN_ALL&&!h.alive)sn.M=Object.assign({},base.M,{ln:SNAP_LN_ALL});sn.a=base.a.map((r,i)=>{const o=G.agents[i];return viewerSees(h,o)?r:0;});sn.b=base.b.filter(b=>G.mode!=='play'||viewerSees(h,{x:b[1],y:b[2],inVent:null}));return sn;}
 function sendPriv(a){if(a&&a.remote&&isHost())sendTo(a.remote,privFor(a));}
 function buildSnap(){const r1=x=>Math.round(x*10)/10;
  const sn={k:'s',m:G.mode,t:r1(G.t),a:G.agents.map(a=>[Math.round(a.x),Math.round(a.y),a.face<0?-1:1,a.moving?1:0,a.alive?1:0,a.inVent!=null?1:0,a.vis==='scan'?1:0]),
@@ -1557,6 +1596,7 @@ function applySnap(sn){if(!G.agents||!G.player)return;const prev=G.mode;const p=
   if(a.isPlayer){if(a.netInit==null||prev!==sn.m||dist(a.x,a.y,x,y)>70||p.inVent!=null||G.mg){a.x=x;a.y=y;a.netInit=1;}else{a.x+=(x-a.x)*0.12;a.y+=(y-a.y)*0.12;}}
   else{a.face=f;a.moving=!!mv;a.inVent=iv?1:null;if(prev!==sn.m||dist(a.x,a.y,x,y)>160){a.x=x;a.y=y;}}});
  G.bodies=(sn.b||[]).map(b=>({id:b[0],x:b[1],y:b[2],col:G.agents[b[0]]?G.agents[b[0]].col:'#ccc',reported:!!b[3]}));
+ if(sn.gc!==undefined){const ng=(sn.gc||[]).map(r=>({who:r[0],text:r[1]}));if(ng.length>(G.gch||[]).length&&G.player&&!G.player.alive&&!G.gcOpen)SND.play('chat');G.gch=ng;}
  G.camsOn=!!sn.cw;G.tasksDone=sn.td||0;G.tasksTotal=sn.tt||1;G.buttonCD=sn.bc||0;G.shots=(sn.sh||[]).map(q=>({x:q[0],y:q[1],side:q[2],t:q[3]}));for(const v of VENTS)if((sn.vo||[]).includes(v.id)){if(v.open<=0&&canSee(p,{x:v.x,y:v.y,inVent:null}))SND.play('vent');v.open=Math.max(v.open,0.3);}
  if(sn.sab){if(!G.sab||G.sab.type!==sn.sab.ty){SND.play('sabStart');G.sab={type:sn.sab.ty,pts:makeSabPts(sn.sab.ty),code:'',playerHold:-1,held:[false,false],t:45};G.alarmT=0;}const S=G.sab;S.t=sn.sab.t;S.code=String(sn.sab.c||'');(sn.sab.f||[]).forEach((f,i)=>{if(S.pts[i])S.pts[i].fixed=!!f;});S.held=(sn.sab.h||[]).map(Boolean);}
  else if(G.sab){G.sab=null;}
@@ -1601,7 +1641,7 @@ function drawMPMenu(){const c=ctx,L=LAND();stars(G.rt);txt(c,'MULTIPLAYER',W/2,L
  bigBtn(c,jx+jw-88,y+10,88,46,'JOIN','#3a6fd8',true,()=>{const code=cleanCode(MPC.value);if(code.length<6){NET.err='Room codes are at least 6 characters.';SFX.bad();return;}SFX.click();netConnect('player',code,nm());});
  y+=76;if(NET.err)txt(c,NET.err,W/2,y,13,'#ff8a8a','center',true,3);
  bigBtn(c,x0,H-SA.b-58,120,42,'◀ BACK','#555d70',true,()=>{NET.err='';G={mode:'title',rt:G.rt};});
- if(L)txt(c,'Empty seats are filled by bots. Up to 10 players.',x0+132,H-SA.b-37,11,'#8f9bb8','left',true);else txt(c,'Empty seats are filled by bots. Up to 10 players.',W/2,H-SA.b-78,11,'#8f9bb8','center',true);}
+ if(L)txt(c,(CFG.fillBots===false?'Empty seats stay empty':'Empty seats are filled by bots')+'. Up to '+(CFG.players||10)+' players.',x0+132,H-SA.b-37,11,'#8f9bb8','left',true);else txt(c,(CFG.fillBots===false?'Empty seats stay empty':'Empty seats are filled by bots')+'. Up to '+(CFG.players||10)+' players.',W/2,H-SA.b-78,11,'#8f9bb8','center',true);}
 function drawLobby(){const c=ctx,L=LAND();stars(G.rt);const host=NET.role==='host';
  txt(c,'ROOM CODE',W/2,L?28:60,13,'#b9c6ee','center',true);txt(c,NET.code||'…',W/2,L?62:104,L?40:46,'#fff','center',true,5);
  if(host)txt(c,'Share this code with your friends',W/2,L?92:140,12,'#8f9bb8','center',true);
@@ -1610,7 +1650,7 @@ function drawLobby(){const c=ctx,L=LAND();stars(G.rt);const host=NET.role==='hos
  if(!NET.ws||!NET.myId)txt(c,NET.status||'Connecting…',W/2,y+20,14,'#cfd8f5','center',true);
  list.forEach((q,i)=>{const x=x0+(i%cols)*(bw+8),yy=y+Math.floor(i/cols)*42;rr(c,x,yy,bw,34,8);c.fillStyle=q.clientId===NET.myId?'#2a3b6a':'#1b2544';c.fill();drawHead(c,x+18,yy+18,0.7,PAL[i%10][1]);txt(c,cleanName(q.name)+(q.isHost?'  ★ host':'')+(q.clientId===NET.myId?' (you)':''),x+36,yy+17,13,'#fff','left',true);});
  const rows=Math.ceil(Math.max(1,list.length)/cols);y+=rows*42+6;const humans=Math.min(10,list.length);
- if(NET.myId)txt(c,humans+' human'+(humans===1?'':'s')+' · '+Math.max(0,10-humans)+' bots will fill the other seats'+(list.length>10?' · room over 10: extra players watch the lobby':''),W/2,y+6,12,'#8f9bb8','center',true);
+ if(NET.myId)txt(c,humans+' human'+(humans===1?'':'s')+' · '+(CFG.fillBots===false?'no bots fill empty seats':Math.max(0,(CFG.players||10)-humans)+' bots will fill the other seats')+(list.length>(CFG.players||10)?' · room over '+(CFG.players||10)+': extra players watch the lobby':''),W/2,y+6,12,'#8f9bb8','center',true);
  if(G.busy)txt(c,'A round is in progress. You will join the next one.',W/2,y+28,13,'#ffd84a','center',true);
  if(G.full)txt(c,'This round is full. Wait for the next one.',W/2,y+28,13,'#ffd84a','center',true);
  if(NET.err)txt(c,NET.err,W/2,y+48,12,'#ff8a8a','center',true);
@@ -1944,7 +1984,7 @@ function drawLounge(){const c=ctx,L=LAND(),m=LG.me;if(!m){enterLounge({solo:!NET
  const fitC=(str,y,size,colr,bold,strokeW)=>{const f=fitText(c,str,pw-14,size,bold?'800 ':'600 ');txt(c,f.str,px+pw/2,y,f.fs,colr,'center',bold,strokeW);};
  if(solo){fitC('SOLO LOUNGE',py+24,13,'#5ee0ff',true);fitC('You + 9 bots',py+48,12,'#cfd8f5',true);fitC('Bots fill the empty seats',py+70,10,'#8f9bb8',false);}
  else{fitC('ROOM CODE',py+14,10,'#8f9bb8',true);fitC(NET.code||'…',py+36,20,'#fff',true,3);const n=Math.min(10,NET.players.length||1);
-  if(NET.myId){fitC(n+'/10 players',py+60,12,'#cfd8f5',true);fitC('bots fill the rest',py+77,10,'#8f9bb8',false);}else fitC(NET.status||'Connecting…',py+66,11,'#cfd8f5',true);}
+  if(NET.myId){fitC(n+'/'+(CFG.players||10)+' players',py+60,12,'#cfd8f5',true);fitC(CFG.fillBots===false?'empty seats stay empty':'bots fill the rest',py+77,10,'#8f9bb8',false);}else fitC(NET.status||'Connecting…',py+66,11,'#cfd8f5',true);}
  const sbY=py+ph+8;
  if(solo||host){bigBtn(c,px,sbY,pw,40,'START',(solo||(NET.myId&&NET.ws))?'#2f8a5a':'#444b5c',!!(solo||(NET.myId&&NET.ws)),()=>loungeStart());}
  else if(NET.myId){c.font='800 11px system-ui,sans-serif';const wl=c.measureText('Waiting for the host to start…').width<=pw-10?['Waiting for the host to start…']:['Waiting for the host','to start…'];wl.forEach((s2,i)=>{const f=fitText(c,s2,pw-10,11,'800 ');txt(c,f.str,px+pw/2,sbY+14+i*14,f.fs,'#cfd8f5','center',true);});}
