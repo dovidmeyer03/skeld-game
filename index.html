@@ -425,7 +425,7 @@ function makeHumanTasks(fake,common){const used=new Set(common);const list=commo
 let TASK_UID=0;/* stable task ids, shared by host and client so a completion never depends on array position */
 
 function newGame(opt){
- opt=opt||{};applyCfg();const nP=clamp(Math.round(CFG.players||10),4,10);const nEff=opt.mp?Math.max(CFG.fillBots===false?0:nP,1+opt.mp.length):nP;const nImp=Math.max(1,Math.min(CFG.imps,Math.floor((nEff-1)/2)));
+ opt=opt||{};applyCfg();LG.wardrobe=false;const nP=clamp(Math.round(CFG.players||10),4,10);const nEff=opt.mp?Math.max(CFG.fillBots===false?0:nP,1+opt.mp.length):nP;const nImp=Math.max(1,Math.min(CFG.imps,Math.floor((nEff-1)/2)));
  // colours: humans keep their lobby colour/cosmetics; bots take the remaining colours (classic 10 first)
  const slotCos=[];slotCos[0]=opt.myCos||null;(opt.mp||[]).forEach((h,i)=>{slotCos[i+1]=h.cos||null;});
  if(opt.botCos){let k=0;for(let i=1;i<10&&k<opt.botCos.length;i++){if(i<=(opt.mp?opt.mp.length:0))continue;slotCos[i]=opt.botCos[k++];}}
@@ -1927,12 +1927,16 @@ function enterLounge(opts){opts=opts||{};const cs=loadCos();
  if(LG.solo){const taken=new Set([LG.me.colIdx]);const base=shuffle([...Array(10).keys()].filter(i=>!taken.has(i))).concat(shuffle([...Array(PAL.length).keys()].filter(i=>i>=10&&!taken.has(i))));
   for(let i=1;i<10;i++){const ci=base.shift();const b={colIdx:ci,name:PAL[ci][0],hat:Math.random()<0.4?pick(HAT_IDS.slice(1)):'none',pants:Math.random()<0.3?pick(PANT_IDS.slice(1)):'none',shirt:Math.random()<0.45?pick(SHIRT_IDS.slice(1)):'none',walk:Math.random()*6,face:1,moving:false,wait:rand(1.5,6),seated:Math.random()<0.45};loungeSeat(b,i);b.spawnT=1.1+i*0.12;LG.bots.push(b);}}
  G={mode:'lobby',rt:G.rt||0};}
-function loungeReturn(){if(!LG.me){enterLounge({solo:!NET.role});return;}LG.active=true;LG.wardrobe=false;const idx=NET.role?Math.max(0,NET.players.findIndex(q=>q.clientId===NET.myId)):0;loungeSeat(LG.me,idx);LG.bots.forEach((b,i)=>loungeSeat(b,i+1));}
+function loungeReturn(){if(!LG.me){enterLounge({solo:!NET.role});return;}LG.active=true;LG.wardrobe=false;if(isClient()){const m=LG.me;act({a:'cos',c:m.colIdx,h:m.hat,p:m.pants,s:m.shirt||'none'});}const idx=NET.role?Math.max(0,NET.players.findIndex(q=>q.clientId===NET.myId)):0;loungeSeat(LG.me,idx);LG.bots.forEach((b,i)=>loungeSeat(b,i+1));}
 function setMyCos(ch){const m=LG.me;if(!m)return;
  if(ch.colIdx!=null){const taken=loungeTaken(true);if(taken.has(ch.colIdx)){LG.toast={t:2,text:PAL[ch.colIdx][0]+' is taken'};SND.play('ui');return;}m.colIdx=ch.colIdx;LG.pendingT=1.5;LG.pendingCol=ch.colIdx;}
  if(ch.hat&&HAT_IDS.includes(ch.hat))m.hat=ch.hat;if(ch.pants&&PANT_IDS.includes(ch.pants))m.pants=ch.pants;if(ch.shirt&&SHIRT_IDS.includes(ch.shirt))m.shirt=ch.shirt;saveCos();SND.play('ui');
  if(isClient())act({a:'cos',c:m.colIdx,h:m.hat,p:m.pants,s:m.shirt||'none'});}
-function loungeUse(){const n=LG.near;if(!n||LG.wardrobe||(LG.me&&LG.me.spawnT>0))return;resetJoy();SND.play('ui');
+/* station boxes in lounge coords, label included; USE works anywhere within 45 of the box, from the moment you appear */
+function stationBox(st){return st.id==='settings'?{x:164,y:80,w:92,h:56}:{x:388,y:68,w:92,h:68};}
+function nearStation(x,y){let best=null,bd=46;for(const st of LSTATIONS){const b=stationBox(st);const dx=Math.max(b.x-x,0,x-b.x-b.w),dy=Math.max(b.y-y,0,y-b.y-b.h),d=Math.hypot(dx,dy);if(d<bd){bd=d;best=st;}}return best;}
+function openStation(st){if(!st||LG.wardrobe)return;resetJoy();SND.play('ui');if(st.id==='wardrobe'){LG.wardrobe=true;LG.tab=0;}else openSettings('lobby',isClient());}
+function loungeUse(){const n=LG.near;if(!n||LG.wardrobe)return;resetJoy();SND.play('ui');
  if(n.id==='wardrobe'){LG.wardrobe=true;LG.tab=0;}else openSettings('lobby',isClient());}
 function loungeStart(){SND.play('start');if(LG.solo||!NET.role){const m=LG.me;newGame({myCos:{colIdx:m.colIdx,hat:m.hat,pants:m.pants,shirt:m.shirt},botCos:LG.bots.map(b=>({colIdx:b.colIdx,hat:b.hat,pants:b.pants,shirt:b.shirt}))});LG.active=false;return;}if(isHost())hostStart();}
 // ---- host side ----
@@ -1959,7 +1963,7 @@ function loungeUpdate(dt){G.rt+=dt;const m=LG.me;if(!m)return;if(LG.toast){LG.to
  for(const k in LG.others){const o=LG.others[k];const kk=Math.min(1,dt*10);o.x+=(o.tx-o.x)*kk;o.y+=(o.ty-o.y)*kk;o.walk+=o.moving?dt*11:dt;}
  for(const b of LG.bots){if(b.spawnT>0){b.spawnT-=dt;b.walk+=dt;continue;}if(b.tx==null||b.wait>0){b.moving=false;b.walk+=dt;b.wait-=dt;if(b.wait<=0){if(b.seated&&Math.random()<0.5){b.wait=rand(3,8);continue;}let tries=0;do{b.tx=rand(110,530);b.ty=rand(130,385);tries++;}while(!lcanStand(b.tx,b.ty,11)&&tries<30);b.seated=false;}continue;}
   const dx=b.tx-b.x,dy=b.ty-b.y,d=Math.hypot(dx,dy);if(d<3){b.tx=null;b.wait=rand(1.5,6);continue;}const sp=70*dt,nx=b.x+dx/d*sp,ny=b.y+dy/d*sp;if(lcanStand(nx,ny,11)){b.x=nx;b.y=ny;}else{b.tx=null;b.wait=0.5;}b.face=dx>0?1:-1;b.moving=true;b.walk+=dt*10;}
- LG.near=null;if(m.spawnT<=0)for(const st of LSTATIONS)if(dist(m.x,m.y,st.x,st.y)<60)LG.near=st;
+ LG.near=nearStation(m.x,m.y);
  if(isClient()&&NET.myId){LG.sendT-=dt;if(LG.sendT<=0){LG.sendT=0.1;netSend({type:'input',data:{lx:Math.round(m.x),ly:Math.round(m.y),f:m.face,m:m.moving?1:0}});}}}
 function loungeHostTick(dt){if(!(NET.role==='host'&&NET.ws&&!NET.inGame&&LG.me&&NET.myId))return;LG.snapT-=dt;if(LG.snapT<=0){LG.snapT=0.1;netSend({type:'snapshot',data:loungeSnap()});}}
 // ---- render ----
@@ -2003,6 +2007,7 @@ function drawLounge(){const c=ctx,L=LAND(),m=LG.me;if(!m){enterLounge({solo:!NET
  c.save();c.translate(ox,oy);c.scale(Z,Z);
  // station highlight
  const pulse=0.5+0.5*Math.sin(G.rt*5);for(const st of LSTATIONS){const near=LG.near===st;const tx=st.id==='settings'?210:434;c.strokeStyle=near?`rgba(255,255,255,${0.6+0.4*pulse})`:`rgba(255,230,80,${0.25+0.3*pulse})`;c.lineWidth=near?3:2;rr(c,tx-46,st.id==='settings'?80:68,92,st.id==='settings'?36:48,8);c.stroke();txt(c,st.id==='settings'?'SETTINGS':'WARDROBE',tx,st.id==='settings'?128:128,10,near?'#fff':'#ffe066','center',true,3);}
+ for(const st of LSTATIONS){const b=stationBox(st);if(!LG.wardrobe&&G.mode==='lobby')addHit(ox+(b.x-6)*Z,oy+(b.y-6)*Z,(b.w+12)*Z,(b.h+12)*Z,()=>openStation(st));}/* tapping the station or its label opens it */
  // actors
  COSMAP={};const list=[];const add=(p,name,isMe)=>{const col=PAL[p.colIdx][1];COSMAP[col]={hat:p.hat,pants:p.pants,shirt:p.shirt||'none'};list.push({y:p.y,d:()=>{if(p.spawnT>0){const a=Math.min(1,p.spawnT/1.1);c.fillStyle=`rgba(255,255,255,${0.55*a})`;c.beginPath();c.ellipse(p.x,p.y-24,20+10*(1-a),34,0,0,TAU);c.fill();}
    drawSpacer(c,p.x,p.y,col,p.face,p.walk,p.moving,p.spawnT>0?Math.max(0.35,1-p.spawnT):1);c.font='700 10px system-ui,sans-serif';c.textAlign='center';c.textBaseline='middle';c.lineWidth=3;c.strokeStyle='rgba(0,0,0,.85)';c.strokeText(name,p.x,p.y-66);c.fillStyle=isMe?'#fff':'#dfe6f2';c.fillText(name,p.x,p.y-66);}});};
