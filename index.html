@@ -1776,7 +1776,13 @@ function memClasses(b,M){const A=G.agents,N=id=>A[id]?A[id].name:'?',since=G.las
  // public record, newest 6 (outcomes, attributed testimony, then older social notes first in line for trimming)
  const pub=[];for(const n of socialNotes())pub.push('Public history (a clue, not proof): '+n.s);for(const h of ((G.social&&G.social.pub)||[]).slice(-3)){for(const n of h.notes)pub.push(n);pub.push(h.out);}C.pub=pub.slice(-6);
  // recent own sightings, newest 6, current round first
- if(!b.imp){const seen=new Map();for(let i=b.snaps.length-1;i>=0&&seen.size<6;i--){const sn=b.snaps[i];for(const [id,room] of sn.seen)if(!seen.has(id)&&A[id]&&A[id].alive&&id!==b.id)seen.set(id,sn.t>=since?`You saw ${N(id)} in ${room} about ${Math.max(1,Math.round(G.t-sn.t))}s before the meeting.`:`You saw ${N(id)} in ${room} (${mtag(sn.t)}).`);}C.sight=[...seen.values()].reverse();}
+ /* A sighting backed by a single 0.35s sample is phrased as a glimpse (may only have been walking through). Samples are
+ counted back from the newest one: one missing sample in between is tolerated (sight flicker), two in a row end the run,
+ and a run never crosses a time gap > 0.9s (a meeting pause) or, for this round's sightings, the last meeting. */
+ if(!b.imp){const S=b.snaps,hasId=(sn,id)=>sn.seen.some(q=>q[0]===id);
+  const samples=(i,id)=>{let n=1,miss=0,prevT=S[i].t;const lo=S[i].t>=since?since:-Infinity;for(let j=i-1;j>=0;j--){const sj=S[j];if(prevT-sj.t>0.9||sj.t<lo)break;prevT=sj.t;if(hasId(sj,id)){n++;miss=0;if(n>=2)break;}else if(++miss>=2)break;}return n;};
+  const seen=new Map();for(let i=S.length-1;i>=0&&seen.size<6;i--){const sn=S[i];for(const [id,room] of sn.seen)if(!seen.has(id)&&A[id]&&A[id].alive&&id!==b.id){const when=sn.t>=since?`about ${Math.max(1,Math.round(G.t-sn.t))}s before the meeting`:`(${mtag(sn.t)})`;
+   seen.set(id,samples(i,id)>=2?`You saw ${N(id)} in ${room} ${when}.`:`You glimpsed ${N(id)} in passing in ${room} ${when} - they may have only been walking through.`);}}C.sight=[...seen.values()].reverse();}
  for(const k in C)C[k]=C[k].map(x=>String(x).slice(0,200));return C;}
 const MEM_ORDER=['role','now','hard','unc','vote','pub','sight'];
 function memFlat(C){const m=[];for(const k of MEM_ORDER)m.push(...C[k]);return m;}
